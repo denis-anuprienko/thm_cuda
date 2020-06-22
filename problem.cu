@@ -120,12 +120,12 @@ void Problem::SolveOnGPU()
         printf("\n\n =======  TIME = %lf s =======\n", it*dt);
         cudaMemcpy(dev_Pw_old, dev_Pw, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToDevice);
         cudaMemcpy(dev_Sw_old, dev_Sw, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToDevice);
-        for(int nit = 1; nit < niter*1; nit++){
+        for(int nit = 1; nit < niter*10; nit++){
             Compute_Sw_GPU();
             Compute_Kr_GPU();
             Compute_Q_GPU();
             Update_Pw_GPU();
-            if(nit%10000 == 0 || nit == 1){
+            if(nit%100000 == 0 || nit == 1){
                 cudaMemcpy(rsd_h, dev_rsd_h, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToHost);
                 DAT err = 0;
                 for(int i = 0; i < nx*ny; i++){
