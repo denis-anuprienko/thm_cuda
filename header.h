@@ -39,8 +39,8 @@ private:
 
 
     // Numerics
-    const int nx      = 128;       // number of cells
-    const int ny      = 128;
+    const int nx      = 32;       // number of cells
+    const int ny      = 32;
     const DAT dx      = Lx/nx;    // cell size
     const DAT dy      = Ly/ny;
     const DAT niter   = 1e5;      // number of PT steps
@@ -67,6 +67,12 @@ private:
     DAT *qx, *qy;   // Fluid fluxes
     DAT *Krx, *Kry; // Relative permeabilities for water
     DAT *rsd_h;
+    DAT *Txx, *Tyy; // Stresses
+    DAT *Txy;
+    DAT *Vx, *Vy;   // Solid velocities
+    DAT *Ux, *Uy;   // Solid displacements
+    DAT *rsd_m_x;
+    DAT *rsd_m_y;
     // Unknowns on GPU
     DAT *dev_Pw;
     DAT *dev_Sw;
@@ -75,6 +81,12 @@ private:
     DAT *dev_qx, *dev_qy;
     DAT *dev_Krx, *dev_Kry;
     DAT *dev_rsd_h;
+    DAT *dev_Txx, *dev_Tyy;
+    DAT *dev_Txy;
+    DAT *dev_Vx, *dev_Vy;
+    DAT *dev_Ux, *dev_Uy;
+    DAT *dev_rsd_m_x;
+    DAT *dev_rsd_m_y;
 
     std::string respath;
 
@@ -86,6 +98,9 @@ private:
     void Compute_Kr_GPU();    // Compute relative permeability
     void Compute_Q_GPU();     // Compute fluid fluxes using Kr
     void Update_Pw_GPU();     // Compute residual and update water pressure
+    void Update_V_GPU();      // Update solid velocity (includes damping)
+    void Update_U_GPU();      // Update solid displacement
+    void Update_Stress_GPU(); // Update stress and compute residual
 
 public:
     Problem(){ Init(); }

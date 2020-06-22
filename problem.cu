@@ -4,6 +4,8 @@
 using namespace std;
 
 #define BLOCK_DIM 16
+#define dt_h      1e-2
+#define dt_m      1e-6
 
 __global__ void kernel_SetIC(DAT *Pw, DAT *Sw, DAT *qx, DAT *qy, DAT *Krx, DAT *Kry, DAT *rsd,
                              const int nx, const int ny, const DAT Lx, const DAT Ly);
@@ -20,6 +22,8 @@ __global__ void kernel_Update_Pw(DAT *rsd, DAT *Pw, DAT *Sw, DAT *Pw_old, DAT *S
                                  DAT *qx, DAT *qy, const int nx, const int ny,
                                  const DAT dx, const DAT dy, const DAT dt,
                                  const DAT phi, const DAT rhow, const DAT sstor);
+
+__global__ void kernel_Update_V();
 
 void Problem::SetIC_GPU()
 {
@@ -39,6 +43,16 @@ void Problem::SetIC_GPU()
     Compute_Sw_GPU();
     //Compute_Kr_GPU();
     //Compute_Q_GPU();
+}
+
+void Problem::Update_V_GPU()
+{
+    dim3 dimBlock(BLOCK_DIM, BLOCK_DIM);
+    dim3 dimGrid((nx+1+dimBlock.x-1)/dimBlock.x, (ny+1+dimBlock.y-1)/dimBlock.y);
+    kernel_Update_V<<<dimGrid,dimBlock>>>
+    cudaError_t err = cudaGetLastError();
+    if(err != 0)
+        printf("Error %x at V\n", err);
 }
 
 void Problem::Compute_Sw_GPU()
@@ -85,6 +99,66 @@ void Problem::Update_Pw_GPU()
         printf("Error %x at Pw\n", err);
 }
 
+void Problem::M_Substep_GPU()
+{
+    printf("Mechanics\n");
+    for(int nit = 1; nit < niter*1; nit++){
+        Update_V_GPU();
+        Update_U_GPU();
+        Update_Stress_GPU();
+        if(nit%100000 == 0 || nit == 1){
+            cudaMemcpy(rsd_m_x, dev_rsd_m_x, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToHost);
+            cudaMemcpy(rsd_m_y, dev_rsd_m_y, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToHost);
+            DAT err_m_x = 0.;
+            DAT err_m_y = 0.;
+            for(int i = 0; i < nx*ny; i++){
+                if(fabs(rsd_m_x[i]) > err_m_x)
+                    err_m_x = fabs(rsd_m_x[i]);
+                if(fabs(rsd_m_y[i]) > err_m_y)
+                    err_m_y = fabs(rsd_m_y[i]);
+            }
+            printf("iter %d: r_m_x = %e, r_m_y = %e\n", nit, err_m_x, err_m_y);
+            fflush(stdout);
+            if(err_m_x < eps_a_m && err_m_y < eps_a_m){
+                printf("Mechanics converged in %d it.: r_m_x = %e, r_m_y = %e\n", nit, err_m_x, err_m_y);
+                break;
+            }
+        }
+    }
+
+}
+
+void Problem::H_Substep_GPU()
+{
+    printf("Flow\n");
+    cudaMemcpy(dev_Pw_old, dev_Pw, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToDevice);
+    cudaMemcpy(dev_Sw_old, dev_Sw, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToDevice);
+    for(int nit = 1; nit < niter*1; nit++){
+        Compute_Sw_GPU();
+        Compute_Kr_GPU();
+        Compute_Q_GPU();
+        Update_Pw_GPU();
+        if(nit%100000 == 0 || nit == 1){
+            cudaMemcpy(rsd_h, dev_rsd_h, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToHost);
+            DAT err = 0;
+            for(int i = 0; i < nx*ny; i++){
+                if(fabs(rsd_h[i]) > err)
+                    err = fabs(rsd_h[i]);
+                if(isinf(rsd_h[i]) || isnan(rsd_h[i])){
+                    printf("Bad value, iter %d", nit);
+                    exit(0);
+                }
+            }
+            printf("iter %d: r_w = %e\n", nit, err);
+            fflush(stdout);
+            if(err < eps_a_h){
+                printf("Flow converged in %d it.: r_w = %e\n", nit, err);
+                break;
+            }
+        }
+    }
+}
+
 void Problem::SolveOnGPU()
 {
     cudaMalloc((void**)&dev_Pw,     sizeof(DAT) * nx*ny);
@@ -96,14 +170,6 @@ void Problem::SolveOnGPU()
     cudaMalloc((void**)&dev_Krx,    sizeof(DAT) * (nx+1)*ny);
     cudaMalloc((void**)&dev_Kry,    sizeof(DAT) * nx*(ny+1));
     cudaMalloc((void**)&dev_rsd_h,     sizeof(DAT) * nx*ny);
-
-//    std::fill(dev_Pw, dev_Pw + nx*ny, 0.0);
-//    std::fill(dev_Pw, dev_Sw + nx*ny, 0.0);
-//    std::fill(dev_Pw, dev_qx + (nx+1)*ny, 0.0);
-//    std::fill(dev_Pw, dev_qy + nx*(ny+1), 0.0);
-//    std::fill(dev_Pw, dev_Krx + (nx+1)*ny, 0.0);
-//    std::fill(dev_Pw, dev_Kry + nx*(ny+1), 0.0);
-//    std::fill(dev_Pw, dev_rsd_h + nx*ny, 0.0);
 
     // Still needed for VTK saving
     Pw    = new DAT[nx*ny];
@@ -118,32 +184,10 @@ void Problem::SolveOnGPU()
 
     for(int it = 1; it <= nt; it++){
         printf("\n\n =======  TIME = %lf s =======\n", it*dt);
-        cudaMemcpy(dev_Pw_old, dev_Pw, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToDevice);
-        cudaMemcpy(dev_Sw_old, dev_Sw, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToDevice);
-        for(int nit = 1; nit < niter*10; nit++){
-            Compute_Sw_GPU();
-            Compute_Kr_GPU();
-            Compute_Q_GPU();
-            Update_Pw_GPU();
-            if(nit%100000 == 0 || nit == 1){
-                cudaMemcpy(rsd_h, dev_rsd_h, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToHost);
-                DAT err = 0;
-                for(int i = 0; i < nx*ny; i++){
-                    if(fabs(rsd_h[i]) > err)
-                        err = fabs(rsd_h[i]);
-                    if(isinf(rsd_h[i]) || isnan(rsd_h[i])){
-                        printf("Bad value, iter %d", nit);
-                        exit(0);
-                    }
-                }
-                printf("iter %d: r_w = %e\n", nit, err);
-                fflush(stdout);
-                if(err < eps_a_h){
-                    printf("Flow converged in %d it.: r_w = %e\n", nit, err);
-                    break;
-                }
-            }
-        }
+        if(do_mech)
+            M_Substep_GPU();
+        if(do_flow)
+            H_Substep_GPU();
         string name = respath + "/sol" + to_string(it) + ".vtk";
         SaveVTK_GPU(name);
     }
@@ -202,6 +246,41 @@ __global__ void kernel_SetIC(DAT *Pw, DAT *Sw, DAT *qx, DAT *qy, DAT *Krx, DAT *
     }
 }
 
+__global__ void kernel_Update_V()
+{
+    if(i > 0 && i < nx && j >= 0 && j <= ny-1){ // Internal faces
+        Vx[i+j*(nx+1)] += dt_m/rho_s *
+                          (
+                          (Txx[i+j*nx] - Txx[i-1+j*nx]) / dx
+                        + (Sw[i+j*nx]*Pw[i+j*nx] - Sw[i-1+j*nx]*Pw[i-1+j*nx]) / dx
+                        - 0*g
+                          );
+        if(j > 0 && j < ny-1)
+            Vx[i+j*(nx+1)] += dt_m/rho_s * (Txy[i+(j+1)*(nx+1)] - Txy[i+j*(nx+1)]) / dy;
+    }
+
+    if(i >= 0 && i <= nx-1 && j > 0 && j < ny){ // Internal faces
+        Vy[i+j*nx]     += dt_m/rho_s *
+                          (
+                          (Tyy[i+j*nx] - Tyy[i+(j-1)*nx]) / dx
+                        + (Sw[i+j*nx]*Pw[i+j*nx] - Sw[i+(j-1)*nx]*Pw[i+(j-1)*nx]) / dx
+                          );
+        if(i > 0 && j < nx-1)
+            Vy[i+j*nx] += dt_m/rho_s * (Txy[i+1+j*(nx+1)] - Txy[i+j*(nx+1)]);
+    }
+
+    // Bc at lower side
+    if(j == 0){
+        DAT Lx = nx*dx, Ly = ny*dy;
+        DAT x  =  i*dx,  y =  j*dy;
+        if(x > Lx/2.-Lx/8. && x < Lx/2.+Lx/8.)
+        //if(i >= 14 && i <= nx-15)
+            qy[i+0*nx] = -rhow*K/muw*((Pw[i+0*nx] - 1e3)/dy + rhow*g);
+        else
+            qy[i+0*nx] = 0.0;
+    }
+}
+
 __global__ void kernel_Compute_Sw(DAT *Pw, DAT *Sw,
                              const int nx, const int ny,
                              const DAT rhow, const DAT g,
@@ -244,8 +323,8 @@ __global__ void kernel_Compute_Q(DAT *qx, DAT *qy, DAT *Pw, DAT *Krx, DAT *Kry,
     if(j == 0){
         DAT Lx = nx*dx, Ly = ny*dy;
         DAT x  =  i*dx,  y =  j*dy;
-        //if(x > Lx/2.-Lx/8. && x < Lx/2.+Lx/8.)
-        if(i >= 14 && i <= nx-15)
+        if(x > Lx/2.-Lx/8. && x < Lx/2.+Lx/8.)
+        //if(i >= 14 && i <= nx-15)
             qy[i+0*nx] = -rhow*K/muw*((Pw[i+0*nx] - 1e3)/dy + rhow*g);
         else
             qy[i+0*nx] = 0.0;
@@ -303,7 +382,7 @@ __global__ void kernel_Update_Pw(DAT *rsd, DAT *Pw, DAT *Sw, DAT *Pw_old, DAT *S
     int i = blockDim.x * blockIdx.x + threadIdx.x;
     int j = blockDim.y * blockIdx.y + threadIdx.y;
 
-    const DAT dt_h = 1e-3;
+    //const DAT dt_h = 1e-2;
 
     if(i >= 0 && i < nx && j >= 0 && j < ny){
         int ind = i+nx*j;
