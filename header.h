@@ -53,7 +53,7 @@ private:
     const DAT nt        = Time / dt;
 
     bool do_mech   = true;
-    bool do_flow   = true;
+    bool do_flow   = false;
     bool save_mech = true;
     bool save_flow = true;
 
@@ -111,6 +111,7 @@ public:
     void SolveOnCPU(void);
     void SaveVTK(std::string path);
     void SaveVTK_GPU(std::string path);
+    void SaveDAT_GPU(int stepnum);
 };
 
 #endif // HEADER_H
