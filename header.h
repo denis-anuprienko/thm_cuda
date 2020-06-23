@@ -39,8 +39,8 @@ private:
 
 
     // Numerics
-    const int nx      = 32;       // number of cells
-    const int ny      = 32;
+    const int nx      = 256;       // number of cells
+    const int ny      = 256;
     const DAT dx      = Lx/nx;    // cell size
     const DAT dy      = Ly/ny;
     const DAT niter   = 1e5;      // number of PT steps
@@ -52,7 +52,7 @@ private:
     const DAT Time      = dt*10;
     const DAT nt        = Time / dt;
 
-    bool do_mech   = false;
+    bool do_mech   = true;
     bool do_flow   = true;
     bool save_mech = true;
     bool save_flow = true;

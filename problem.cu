@@ -6,12 +6,15 @@
 using namespace std;
 
 #define BLOCK_DIM 16
-#define dt_h      1e-2
+#define dt_h      5e-4
 #define dt_m      1e-6
 
 void FindMax(double *dev_arr, double *max, int size);
 
-__global__ void kernel_SetIC(DAT *Txx, DAT *Tyy, DAT *Txy, DAT *Vx, DAT *Vy, DAT *Ux, DAT *Uy, DAT *rsd_m_x, DAT *rsd_m_y, DAT *Pw, DAT *Sw, DAT *qx, DAT *qy, DAT *Krx, DAT *Kry, DAT *rsd_h,
+__global__ void kernel_SetIC(DAT *Txx, DAT *Tyy, DAT *Txy, DAT *Vx, DAT *Vy, DAT *Ux, DAT *Uy,
+                             DAT *rsd_m_x, DAT *rsd_m_y,
+                             DAT *Pw, DAT *Sw, DAT *qx, DAT *qy, DAT *Krx, DAT *Kry,
+                             DAT *rsd_h,
                              const int nx, const int ny, const DAT Lx, const DAT Ly);
 __global__ void kernel_Compute_Sw(DAT *Pw, DAT *Sw, const int nx, const int ny,
                              const DAT rhow, const DAT g,
@@ -57,8 +60,8 @@ void Problem::SetIC_GPU()
 {
     dim3 dimBlock(BLOCK_DIM, BLOCK_DIM);
     dim3 dimGrid((nx+dimBlock.x-1)/dimBlock.x, (ny+dimBlock.y-1)/dimBlock.y);
-    printf("Launching %dx%d blocks of %dx%d threads\n", (nx+2+dimBlock.x-1)/dimBlock.x,
-           (ny+2+dimBlock.y-1)/dimBlock.y, BLOCK_DIM, BLOCK_DIM);
+    printf("Launching %dx%d blocks of %dx%d threads\n", (nx+1+dimBlock.x-1)/dimBlock.x,
+           (ny+1+dimBlock.y-1)/dimBlock.y, BLOCK_DIM, BLOCK_DIM);
     //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
     kernel_SetIC<<<dimGrid,dimBlock>>>(dev_Txx, dev_Tyy, dev_Txy,
                                        dev_Vx, dev_Vy, dev_Ux, dev_Uy,
@@ -159,26 +162,28 @@ void Problem::M_Substep_GPU()
 {
     printf("Mechanics\n");
     fflush(stdout);
-    for(int nit = 1; nit < 50000; nit++){
+    for(int nit = 1; nit <= 50000; nit++){
         Update_V_GPU();
         Update_U_GPU();
         Update_Stress_GPU();
-        if(nit%10000 == 0 || nit == 1){
-            cudaMemcpy(rsd_m_x, dev_rsd_m_x, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToHost);
-            cudaMemcpy(rsd_m_y, dev_rsd_m_y, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToHost);
+        if(nit%10000 == 0 || nit == 1 || nit == 1000){
             DAT err_m_x = 0.;
             DAT err_m_y = 0.;
-            for(int i = 0; i < nx*ny; i++){
-                if(fabs(rsd_m_x[i]) > err_m_x)
-                    err_m_x = fabs(rsd_m_x[i]);
-                if(fabs(rsd_m_y[i]) > err_m_y)
-                    err_m_y = fabs(rsd_m_y[i]);
+//            cudaMemcpy(rsd_m_x, dev_rsd_m_x, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToHost);
+//            cudaMemcpy(rsd_m_y, dev_rsd_m_y, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToHost);
+//            for(int i = 0; i < nx*ny; i++){
+//                if(fabs(rsd_m_x[i]) > err_m_x)
+//                    err_m_x = fabs(rsd_m_x[i]);
+//                if(fabs(rsd_m_y[i]) > err_m_y)
+//                    err_m_y = fabs(rsd_m_y[i]);
 
-                if(isinf(rsd_m_x[i]) || isnan(rsd_m_x[i]) || isinf(rsd_m_y[i]) || isnan(rsd_m_y[i])){
-                    printf("Bad value, iter %d", nit);
-                    exit(0);
-                }
-            }
+//                if(isinf(rsd_m_x[i]) || isnan(rsd_m_x[i]) || isinf(rsd_m_y[i]) || isnan(rsd_m_y[i])){
+//                    printf("Bad value, iter %d", nit);
+//                    exit(0);
+//                }
+//            }
+            FindMax(dev_rsd_m_x, &err_m_x, nx*ny);
+            FindMax(dev_rsd_m_y, &err_m_y, nx*ny);
             printf("iter %d: r_m_x = %e, r_m_y = %e\n", nit, err_m_x, err_m_y);
             fflush(stdout);
             if(err_m_x < eps_a_m && err_m_y < eps_a_m){
@@ -199,7 +204,7 @@ void Problem::H_Substep_GPU()
     DAT flag, *dev_flag;
     cudaMalloc((void**)&dev_flag, sizeof(DAT));
     cudaMemset(dev_flag,0,sizeof(DAT));
-    for(int nit = 1; nit < 100000; nit++){
+    for(int nit = 1; nit <= 30000; nit++){
         Compute_Sw_GPU();
         Compute_Kr_GPU();
         Compute_Q_GPU();
@@ -252,8 +257,6 @@ void Problem::SolveOnGPU()
     cudaMalloc((void**)&dev_rsd_m_x,  sizeof(DAT) * nx*ny);
     cudaMalloc((void**)&dev_rsd_m_y,  sizeof(DAT) * nx*ny);
     cudaEventRecord(tbeg);
-    float alloctime = 0.0;
-    cudaEventElapsedTime(&alloctime, tbeg, tend);
 
     printf("Allocated on GPU\n");
 
@@ -276,23 +279,19 @@ void Problem::SolveOnGPU()
     std::fill_n(Ux, (nx+1)*ny, 0.0);
     std::fill_n(Uy, nx*(ny+1), 0.0);
 
-
-    cudaEventRecord(tend);
-    cudaEventSynchronize(tend);
-
     SetIC_GPU();
     cudaDeviceSynchronize();
     SaveVTK_GPU(respath + "/sol0.vtk");
 
-    for(int it = 1; it <= 1; it++){
+    for(int it = 1; it <= nt; it++){
         printf("\n\n =======  TIME = %lf s =======\n", it*dt);
         if(do_mech)
             M_Substep_GPU();
         if(do_flow)
             H_Substep_GPU();
         string name = respath + "/sol" + to_string(it) + ".vtk";
-        //SaveVTK_GPU(name);
-        //SaveDAT_GPU(it);
+        SaveVTK_GPU(name);
+        SaveDAT_GPU(it);
     }
 
     cudaFree(dev_Pw);
@@ -321,8 +320,7 @@ void Problem::SolveOnGPU()
 
     float comptime = 0.0;
     cudaEventElapsedTime(&comptime, tbeg, tend);
-    printf("Allocation time = %f s\nComputation time = %f s\n",
-           alloctime*1e8, comptime/1e3);
+    printf("\nComputation time = %f s\n", comptime/1e3);
 
     delete [] Pw;
     delete [] Sw;
@@ -400,7 +398,7 @@ __global__ void kernel_Update_V(DAT *Vx, DAT *Vy, DAT *Txx, DAT *Tyy, DAT *Txy, 
         DAT dTxxdx  = (Txx[i+j*nx] - Txx[i-1+j*nx]) / dx;
         DAT dPwSwdx = (Sw[i+j*nx]*Pw[i+j*nx] - Sw[i-1+j*nx]*Pw[i-1+j*nx]) / dx;
 
-        Vx[i+j*(nx+1)]     += dt_m * (1./rho_s*(dTxxdx - 0*dPwSwdx) - g);
+        Vx[i+j*(nx+1)]     += dt_m * (1./rho_s*(dTxxdx - dPwSwdx) - g);
 
         if(j > 0 && j < ny-1)
             Vx[i+j*(nx+1)] += dt_m/rho_s * (Txy[i+(j+1)*(nx+1)] - Txy[i+j*(nx+1)]) / dy;
@@ -410,7 +408,7 @@ __global__ void kernel_Update_V(DAT *Vx, DAT *Vy, DAT *Txx, DAT *Tyy, DAT *Txy, 
         DAT dTyydy = (Tyy[i+j*nx] - Tyy[i+(j-1)*nx]) / dy;
         DAT dPwSwdy = (Sw[i+j*nx]*Pw[i+j*nx] - Sw[i+(j-1)*nx]*Pw[i+(j-1)*nx]) / dy;
 
-        Vy[i+j*nx]     += dt_m * (1./rho_s*(dTyydy - 0*dPwSwdy) - g);
+        Vy[i+j*nx]     += dt_m * (1./rho_s*(dTyydy - dPwSwdy) - g);
 
         if(i > 0 && i < nx-1)
             Vy[i+j*nx] += dt_m/rho_s * (Txy[i+1+j*(nx+1)] - Txy[i+j*(nx+1)]) / dx;
@@ -420,12 +418,12 @@ __global__ void kernel_Update_V(DAT *Vx, DAT *Vy, DAT *Txx, DAT *Tyy, DAT *Txy, 
     if(i == 0 && j >= 0 && j <= ny-1){ // Left BCs: zero stress
         Vx[i+j*(nx+1)] += dt_m * (1./rho_s*(Txx[i+j*nx]-0.)/dx - g);
     }
-//    if(i == nx && j >= 0 && j < ny){ // Right BCs: zero stress
-//        Vx[i+j*(nx+1)] += dt_m/rho_s * (0.-Txx[nx-1+j*nx])/dx;
-//    }
-//    if(j == 0 && i >= 0 && i < nx){ // Lower BCs: stress equal to water pressure?
-//        Vy[i+j*nx] += dt_m * (1./rho_s*(Tyy[i+0*nx]-Pw[i+0*nx])/dy - g);
-//    }
+    if(i == nx && j >= 0 && j < ny){ // Right BCs: zero stress
+        Vx[i+j*(nx+1)] += dt_m/rho_s * (0.-Txx[nx-1+j*nx] - g)/dx;
+    }
+    if(j == 0 && i >= 0 && i < nx){ // Lower BCs: stress equal to water pressure?
+        Vy[i+j*nx] += dt_m * (1./rho_s*(Tyy[i+0*nx]-Pw[i+0*nx])/dy - g);
+    }
 }
 
 __global__ void kernel_Update_U(DAT *Ux, DAT *Uy, DAT *Vx, DAT *Vy,
@@ -471,19 +469,22 @@ __global__ void kernel_Update_Stress(DAT *Txx, DAT *Tyy, DAT *Txy, DAT *Vx, DAT 
         DAT dVydy = (Vy[i+(j+1)*nx]   - Vy[i+j*nx])/dy;
         DAT dSwdt = (Sw[ind] - Sw_old[ind])/dt;
 
-        Txx[ind] += dt_m * ((2*mu+lam)*dVxdx + lam*dVydy - 0*dSwdt);
-        Tyy[ind] += dt_m * ((2*mu+lam)*dVydy + lam*dVxdx - 0*dSwdt);
+        Txx[ind] += dt_m * ((2*mu+lam)*(dVxdx-dSwdt) + lam*dVydy);
+        Tyy[ind] += dt_m * ((2*mu+lam)*(dVydy-dSwdt) + lam*dVxdx);
 
-        if(i < nx-1 && j < ny-1){
+        if(i > 0 && i < nx-1 && j > 0 && j < ny-1){
            rsd_m_x[ind] = (Txx[i+1+j*nx]-Txx[ind])/dx
-                        - 0*(Sw[i+1+j*nx]*Pw[i+1+j*nx]-Sw[ind]*Pw[ind])/dx
+                        - (Sw[i+1+j*nx]*Pw[i+1+j*nx]-Sw[ind]*Pw[ind])/dx
                         + (Txy[i+(j+1)*(nx+1)]-Txy[i+j*(nx+1)])/dy
                         - rho_s*g;
 
            rsd_m_y[ind] = (Tyy[i+(j+1)*nx]-Tyy[ind])/dy
-                        - 0*(Sw[i+(j+1)*nx]*Pw[i+(j+1)*nx]-Sw[ind]*Pw[ind])/dy
+                        - (Sw[i+(j+1)*nx]*Pw[i+(j+1)*nx]-Sw[ind]*Pw[ind])/dy
                         + (Txy[i+1+j*(nx+1)]-Txy[i+j*(nx+1)])/dy
                         - rho_s*g;
+
+           rsd_m_x[ind] = fabs(rsd_m_x[ind]);
+           rsd_m_y[ind] = fabs(rsd_m_y[ind]);
         }
     }
 }
@@ -530,7 +531,7 @@ __global__ void kernel_Compute_Q(DAT *qx, DAT *qy, DAT *Pw, DAT *Krx, DAT *Kry,
     // Bc at lower side
     if(j == 0){
         DAT Lx = nx*dx, Ly = ny*dy;
-        DAT x  =  i*dx,  y =  j*dy;
+        DAT x  =  (0.5+i)*dx,  y =  (0.5+j)*dy;
         if(x > Lx/2.-Lx/8. && x < Lx/2.+Lx/8.)
         //if(i >= 14 && i <= nx-15)
             qy[i+0*nx] = -rhow*K/muw*((Pw[i+0*nx] - 1e3)/dy + rhow*g);
