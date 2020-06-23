@@ -1,11 +1,15 @@
 #include "header.h"
 #include <cuda.h>
+#include <cuda_runtime.h>
+#include "cublas_v2.h"
 
 using namespace std;
 
 #define BLOCK_DIM 16
 #define dt_h      1e-2
 #define dt_m      1e-6
+
+void FindMax(double *dev_arr, double *max, int size);
 
 __global__ void kernel_SetIC(DAT *Txx, DAT *Tyy, DAT *Txy, DAT *Vx, DAT *Vy, DAT *Ux, DAT *Uy, DAT *rsd_m_x, DAT *rsd_m_y, DAT *Pw, DAT *Sw, DAT *qx, DAT *qy, DAT *Krx, DAT *Kry, DAT *rsd_h,
                              const int nx, const int ny, const DAT Lx, const DAT Ly);
@@ -31,6 +35,23 @@ __global__ void kernel_Update_U(DAT *Ux, DAT *Uy, DAT *Vx, DAT *Vy, const int nx
 __global__ void kernel_Update_Stress(DAT *Txx, DAT *Tyy, DAT *Txy, DAT *Vx, DAT *Vy, DAT *Pw, DAT *Sw, DAT *Sw_old, DAT *rsd_m_x, DAT *rsd_m_y, const int nx, const int ny,
                                  const DAT dx,  const DAT dy, const DAT dt,
                                  const DAT rho_s, const DAT g, const DAT mu, const DAT lam);
+
+void FindMax(DAT *dev_arr, DAT *max, int size)
+{
+    cublasHandle_t handle;
+    cublasStatus_t stat;
+    cublasCreate(&handle);
+
+    int maxind = 0;
+    stat = cublasIdamax(handle, size, dev_arr, 1, &maxind);
+    if (stat != CUBLAS_STATUS_SUCCESS)
+        printf("Max failed\n");
+
+
+    cudaMemcpy(max, dev_arr+maxind-1, sizeof(DAT), cudaMemcpyDeviceToHost);
+
+    cublasDestroy(handle);
+}
 
 void Problem::SetIC_GPU()
 {
@@ -172,24 +193,29 @@ void Problem::M_Substep_GPU()
 void Problem::H_Substep_GPU()
 {
     printf("Flow\n");
+    fflush(stdout);
     cudaMemcpy(dev_Pw_old, dev_Pw, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToDevice);
     cudaMemcpy(dev_Sw_old, dev_Sw, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToDevice);
+    DAT flag, *dev_flag;
+    cudaMalloc((void**)&dev_flag, sizeof(DAT));
+    cudaMemset(dev_flag,0,sizeof(DAT));
     for(int nit = 1; nit < 100000; nit++){
         Compute_Sw_GPU();
         Compute_Kr_GPU();
         Compute_Q_GPU();
         Update_Pw_GPU();
         if(nit%10000 == 0 || nit == 1){
-            cudaMemcpy(rsd_h, dev_rsd_h, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToHost);
-            DAT err = 0;
-            for(int i = 0; i < nx*ny; i++){
-                if(fabs(rsd_h[i]) > err)
-                    err = fabs(rsd_h[i]);
-                if(isinf(rsd_h[i]) || isnan(rsd_h[i])){
-                    printf("Bad value, iter %d", nit);
-                    exit(0);
-                }
-            }
+            DAT err = 13;
+//            cudaMemcpy(rsd_h, dev_rsd_h, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToHost);
+//            for(int i = 0; i < nx*ny; i++){
+//                if(fabs(rsd_h[i]) > err)
+//                    err = fabs(rsd_h[i]);
+//                if(isinf(rsd_h[i]) || isnan(rsd_h[i])){
+//                    printf("Bad value, iter %d", nit);
+//                    exit(0);
+//                }
+//            }
+            FindMax(dev_rsd_h, &err, nx*ny);
             printf("iter %d: r_w = %e\n", nit, err);
             fflush(stdout);
             if(err < eps_a_h){
@@ -202,6 +228,10 @@ void Problem::H_Substep_GPU()
 
 void Problem::SolveOnGPU()
 {
+    cudaEvent_t tbeg, tend;
+    cudaEventCreate(&tbeg);
+    cudaEventCreate(&tend);
+    cudaEventRecord(tbeg);
     cudaMalloc((void**)&dev_Pw,     sizeof(DAT) * nx*ny);
     cudaMalloc((void**)&dev_Sw,     sizeof(DAT) * nx*ny);
     cudaMalloc((void**)&dev_Pw_old, sizeof(DAT) * nx*ny);
@@ -221,6 +251,9 @@ void Problem::SolveOnGPU()
     cudaMalloc((void**)&dev_Uy,     sizeof(DAT) * nx*(ny+1));
     cudaMalloc((void**)&dev_rsd_m_x,  sizeof(DAT) * nx*ny);
     cudaMalloc((void**)&dev_rsd_m_y,  sizeof(DAT) * nx*ny);
+    cudaEventRecord(tbeg);
+    float alloctime = 0.0;
+    cudaEventElapsedTime(&alloctime, tbeg, tend);
 
     printf("Allocated on GPU\n");
 
@@ -243,19 +276,23 @@ void Problem::SolveOnGPU()
     std::fill_n(Ux, (nx+1)*ny, 0.0);
     std::fill_n(Uy, nx*(ny+1), 0.0);
 
+
+    cudaEventRecord(tend);
+    cudaEventSynchronize(tend);
+
     SetIC_GPU();
     cudaDeviceSynchronize();
     SaveVTK_GPU(respath + "/sol0.vtk");
 
-    for(int it = 1; it <= nt; it++){
+    for(int it = 1; it <= 1; it++){
         printf("\n\n =======  TIME = %lf s =======\n", it*dt);
         if(do_mech)
             M_Substep_GPU();
         if(do_flow)
             H_Substep_GPU();
         string name = respath + "/sol" + to_string(it) + ".vtk";
-        SaveVTK_GPU(name);
-        SaveDAT_GPU(it);
+        //SaveVTK_GPU(name);
+        //SaveDAT_GPU(it);
     }
 
     cudaFree(dev_Pw);
@@ -277,6 +314,15 @@ void Problem::SolveOnGPU()
     cudaFree(dev_Vy);
     cudaFree(dev_rsd_m_x);
     cudaFree(dev_rsd_m_y);
+
+
+    cudaEventRecord(tend);
+    cudaEventSynchronize(tend);
+
+    float comptime = 0.0;
+    cudaEventElapsedTime(&comptime, tbeg, tend);
+    printf("Allocation time = %f s\nComputation time = %f s\n",
+           alloctime*1e8, comptime/1e3);
 
     delete [] Pw;
     delete [] Sw;
@@ -554,6 +600,9 @@ __global__ void kernel_Update_Pw(DAT *rsd, DAT *Pw, DAT *Sw, DAT *Pw_old, DAT *S
                  + (qy[i+(j+1)*nx] - qy[i+j*nx])/dy;
 
         Pw[ind]  -= rsd[ind] * dt_h;
+
+        rsd[ind] = fabs(rsd[ind]);
+
         //if(i==nx-1 && j==ny-2 && fabs(rsd[ind])>1e-18)
         //    printf("rsd = %lf\n", rsd[ind]);
         //    Pw[ind] = 1e11;

@@ -52,8 +52,8 @@ private:
     const DAT Time      = dt*10;
     const DAT nt        = Time / dt;
 
-    bool do_mech   = true;
-    bool do_flow   = false;
+    bool do_mech   = false;
+    bool do_flow   = true;
     bool save_mech = true;
     bool save_flow = true;
 
