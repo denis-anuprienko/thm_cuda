@@ -39,17 +39,17 @@ private:
 
 
     // Numerics
-    const int nx      = 256;       // number of cells
-    const int ny      = 256;
+    const int nx      = 128;       // number of cells
+    const int ny      = nx;
     const DAT dx      = Lx/nx;    // cell size
     const DAT dy      = Ly/ny;
     const DAT niter   = 1e5;      // number of PT steps
-    const DAT eps_a_m = 1e-4;     // absolute tolerance, mechanics
+    const DAT eps_a_m = 1e-9;     // absolute tolerance, mechanics
     const DAT eps_a_h = 1e-6;     // absolute tolerance, flow
-    const DAT damp    = 1.;
+    const DAT damp    = 1e1;
 
-    const DAT dt        = 1e0;    // Seconds
-    const DAT Time      = dt*10;
+    const DAT dt        = 1e-1;    // Seconds
+    const DAT Time      = dt*100;
     const DAT nt        = Time / dt;
 
     bool do_mech   = true;
@@ -85,6 +85,7 @@ private:
     DAT *dev_Txy;
     DAT *dev_Vx, *dev_Vy;
     DAT *dev_Ux, *dev_Uy;
+    DAT *dev_Ux_old, *dev_Uy_old;
     DAT *dev_rsd_m_x;
     DAT *dev_rsd_m_y;
 
