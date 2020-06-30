@@ -499,17 +499,19 @@ __global__ void kernel_Update_Stress(DAT *Txx, DAT *Tyy, DAT *Txy, DAT *Vx, DAT 
 
     // Residual x-component, 'i' is x-index of a vertical face
     if(i >= 1 && i <= nx-1 && j > 0 && j < ny-1){
-        DAT dTxxdx  = (Txx[i+j*nx] - Txx[i-1+j*nx]) / dx;
-        DAT dTxydy  = (Txy[i+(j+1)*(nx+1)] - Txy[i+j*(nx+1)]) / dy;
-        DAT dPwSwdx = (Pw[i+j*nx]*Sw[i+j*nx] - Pw[i-1+j*nx]*Sw[i-1+j*nx]) / dx;
-        rsd_m_x[i+j*nx] = fabs(dTxxdx + dTxydy - dPwSwdx);
+//        DAT dTxxdx  = (Txx[i+j*nx] - Txx[i-1+j*nx]) / dx;
+//        DAT dTxydy  = (Txy[i+(j+1)*(nx+1)] - Txy[i+j*(nx+1)]) / dy;
+//        DAT dPwSwdx = (Pw[i+j*nx]*Sw[i+j*nx] - Pw[i-1+j*nx]*Sw[i-1+j*nx]) / dx;
+//        rsd_m_x[i+j*nx] = fabs(dTxxdx + dTxydy - dPwSwdx);
+        rsd_m_x[i+j*nx] = fabs(Vx[i+j*(nx+1)]);
     }
     // Residual y-component, 'j' is y-index of a horizontal face
     if(j >= 1 && j <= ny-1 && i > 0 && i < nx-1){
-        DAT dTyydy  = (Tyy[i+j*nx] - Tyy[i+(j-1)*nx]) / dy;
-        DAT dTxydx  = (Txy[i+1+j*(nx+1)] - Txy[i+j*(nx+1)]) / dx;
-        DAT dPwSwdy = (Pw[i+j*nx]*Sw[i+j*nx] - Pw[i+(j-1)*nx]*Sw[i+(j-1)*nx]) / dx;
-        rsd_m_y[i+j*nx] = fabs(dTyydy + dTxydx - dPwSwdy - rho_s*g);
+//        DAT dTyydy  = (Tyy[i+j*nx] - Tyy[i+(j-1)*nx]) / dy;
+//        DAT dTxydx  = (Txy[i+1+j*(nx+1)] - Txy[i+j*(nx+1)]) / dx;
+//        DAT dPwSwdy = (Pw[i+j*nx]*Sw[i+j*nx] - Pw[i+(j-1)*nx]*Sw[i+(j-1)*nx]) / dx;
+//        rsd_m_y[i+j*nx] = fabs(dTyydy + dTxydx - dPwSwdy - rho_s*g);
+        rsd_m_y[i+j*nx] = fabs(Vy[i+j*nx]);
     }
 
 }
