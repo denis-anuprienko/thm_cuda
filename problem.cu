@@ -284,6 +284,10 @@ void Problem::SolveOnGPU()
 
     SetIC_GPU();
     cudaDeviceSynchronize();
+
+    // Initial mechanical state
+    M_Substep_GPU();
+
     SaveVTK_GPU(respath + "/sol0.vtk");
 
     for(int it = 1; it <= nt; it++){
@@ -414,7 +418,7 @@ __global__ void kernel_Update_V(DAT *Vx, DAT *Vy, DAT *Txx, DAT *Tyy, DAT *Txy, 
 
         Vx[i+j*(nx+1)]     += dt_m * (1./rho_s*(dTxxdx - 0*dPwSwdx));
 
-        //if(j > 0 && j < ny-1)
+        if(j > 0 && j < ny-1)
             Vx[i+j*(nx+1)] += dt_m/rho_s * (Txy[i+(j+1)*(nx+1)] - Txy[i+j*(nx+1)]) / dy;
     }
 
@@ -424,7 +428,7 @@ __global__ void kernel_Update_V(DAT *Vx, DAT *Vy, DAT *Txx, DAT *Tyy, DAT *Txy, 
 
         Vy[i+j*nx]     += dt_m * (1./rho_s*(dTyydy - 0*dPwSwdy) - g);
 
-        //if(i > 0 && i < nx-1)
+        if(i > 0 && i < nx-1)
             Vy[i+j*nx] += dt_m/rho_s * (Txy[i+1+j*(nx+1)] - Txy[i+j*(nx+1)]) / dx;
     }
 
@@ -433,7 +437,7 @@ __global__ void kernel_Update_V(DAT *Vx, DAT *Vy, DAT *Txx, DAT *Tyy, DAT *Txy, 
         Vx[i+j*(nx+1)] += dt_m * (1./rho_s*(Txx[i+j*nx]-0.)/dx);
     }
     if(i == nx && j >= 0 && j < ny){ // Right BCs: zero stress
-        //Vx[i+j*(nx+1)] += dt_m/rho_s * (0.-Txx[i-1+j*nx])/dx;
+        Vx[i+j*(nx+1)] += dt_m/rho_s * (0.-Txx[i-1+j*nx])/dx;
     }
     if(j == 0 && i >= 0 && i < nx){ // Lower BCs: stress equal to water pressure?
         Vy[i+j*nx] += dt_m * (1./rho_s*(Tyy[i+0*nx]-0*Pw[i+0*nx])/dy - g);
@@ -480,46 +484,34 @@ __global__ void kernel_Update_Stress(DAT *Txx, DAT *Tyy, DAT *Txy, DAT *Vx, DAT 
         Txy[i+j*(nx+1)] += dt_m * mu*(dVxdy + dVydx);
     }
 
-    //if(i >= 0 && i < nx && j >= 0 && j < ny){
-    if(i >= 0 && i < nx && j > 0 && j < ny-1){    // shit
+    // Update diagonal stress components
+    if(i >= 0 && i < nx && j >= 0 && j < ny){
+    //if(i >= 0 && i < nx && j > 0 && j < ny-1){    // shit
         int ind = i+nx*j;
 
         DAT dVxdx = (Vx[i+1+j*(nx+1)] - Vx[i+j*(nx+1)])/dx;
         DAT dVydy = (Vy[i+(j+1)*nx]   - Vy[i+j*nx])/dy;
         DAT dSwdt = (Sw[ind] - Sw_old[ind])/dt;
 
-        Txx[ind] += dt_m * ((2*mu+lam)*(dVxdx-0*dSwdt-0e-2*Sw[ind]+0.0) + lam*dVydy);
-        Tyy[ind] += dt_m * ((2*mu+lam)*(dVydy-0*dSwdt-0e-2*Sw[ind]+0.0) + lam*dVxdx);
-
-        if(i >= 0 && i < nx && j >= 0 && j < ny){
-        //if(i >= 0 && i < nx-1 && j >= 0 && j < ny-1){ // shit
-           DAT rmx_old = rsd_m_x[ind];
-           DAT rmy_old = rsd_m_y[ind];
-           rsd_m_x[ind] = (Txx[i+1+j*nx]-Txx[ind])/dx
-                        - 0*(Sw[i+1+j*nx]*Pw[i+1+j*nx]-Sw[ind]*Pw[ind])/dx
-                        + (Txy[i+(j+1)*(nx+1)]-Txy[i+j*(nx+1)])/dy
-                        - 0*rho_s*g;
-
-           rsd_m_y[ind] = (Tyy[i+(j+1)*nx]-Tyy[ind])/dy
-                        - 0*(Sw[i+(j+1)*nx]*Pw[i+(j+1)*nx]-Sw[ind]*Pw[ind])/dy
-                        + (Txy[i+1+j*(nx+1)]-Txy[i+j*(nx+1)])/dy
-                        - rho_s*g;
-
-           rsd_m_x[ind] = fabs(rsd_m_x[ind]);
-           rsd_m_y[ind] = fabs(rsd_m_y[ind]);
-
-//           if(i == 5 && j == 5)
-//               printf("%e %e %e\n", rsd_m_x[ind], rmx_old, fabs(rsd_m_x[ind]-rmx_old));
-
-           // Stop if residual doesn't change
-//           if(fabs(rsd_m_x[ind] - rmx_old) < 1e1 || fabs(rmx_old) < 1e-9)
-//               rsd_m_x[ind] = 0.0;
-//           if(fabs(rsd_m_y[ind] - rmy_old) < 1e1 || fabs(rmy_old) < 1e-9)
-//               rsd_m_y[ind] = 0.0;
-//           rsd_m_x[ind] = fabs(0.5 * (Vx[i+j*(nx+1)] + Vx[i+1+j*(nx+1)]));
-//           rsd_m_y[ind] = fabs(0.5 * (Vy[i+j*nx]    + Vy[i+(j+1)*nx]));
-        }
+        Txx[ind] += dt_m * ((2*mu+lam)*(dVxdx-0.87*dSwdt-0e-2*Sw[ind]+0.0) + lam*dVydy);
+        Tyy[ind] += dt_m * ((2*mu+lam)*(dVydy-0.87*dSwdt-0e-2*Sw[ind]+0.0) + lam*dVxdx);
     }
+
+    // Residual x-component, 'i' is x-index of a vertical face
+    if(i >= 1 && i <= nx-1 && j > 0 && j < ny-1){
+        DAT dTxxdx  = (Txx[i+j*nx] - Txx[i-1+j*nx]) / dx;
+        DAT dTxydy  = (Txy[i+(j+1)*(nx+1)] - Txy[i+j*(nx+1)]) / dy;
+        DAT dPwSwdx = (Pw[i+j*nx]*Sw[i+j*nx] - Pw[i-1+j*nx]*Sw[i-1+j*nx]) / dx;
+        rsd_m_x[i+j*nx] = fabs(dTxxdx + dTxydy - dPwSwdx);
+    }
+    // Residual y-component, 'j' is y-index of a horizontal face
+    if(j >= 1 && j <= ny-1 && i > 0 && i < nx-1){
+        DAT dTyydy  = (Tyy[i+j*nx] - Tyy[i+(j-1)*nx]) / dy;
+        DAT dTxydx  = (Txy[i+1+j*(nx+1)] - Txy[i+j*(nx+1)]) / dx;
+        DAT dPwSwdy = (Pw[i+j*nx]*Sw[i+j*nx] - Pw[i+(j-1)*nx]*Sw[i+(j-1)*nx]) / dx;
+        rsd_m_y[i+j*nx] = fabs(dTyydy + dTxydx - dPwSwdy - rho_s*g);
+    }
+
 }
 
 
