@@ -116,6 +116,16 @@ void Problem::SaveVTK(string path)
         }
     }
 
+    // Values in cell are averaged from cell nodes
+    out << "SCALARS Txy double" << endl;
+    out << "LOOKUP_TABLE default" << endl;
+    for(int j = 0; j < ny; j++){
+        for(int i = 0; i < nx; i++){
+            out << 0.25*(Txy[i+j*(nx+1)] + Txy[i+j*(nx+1)]
+                       + Txy[i+1+j*(nx+1)] + Txy[i+(j+1)*(nx+1)]) << endl;
+        }
+    }
+
     out << "VECTORS FluidFlux double" << endl;
     for(int j = 0; j < ny; j++){
         for(int i = 0; i < nx; i++){

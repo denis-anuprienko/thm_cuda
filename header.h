@@ -39,7 +39,7 @@ private:
 
 
     // Numerics
-    const int nx      = 128;       // number of cells
+    const int nx      = 64;       // number of cells
     const int ny      = nx;
     const DAT dx      = Lx/nx;    // cell size
     const DAT dy      = Ly/ny;
@@ -49,11 +49,11 @@ private:
     const DAT damp    = 1e1;
 
     const DAT dt        = 1e-1;    // Seconds
-    const DAT Time      = dt*100;
+    const DAT Time      = dt*1;
     const DAT nt        = Time / dt;
 
     bool do_mech   = true;
-    bool do_flow   = true;
+    bool do_flow   = false;
     bool save_mech = true;
     bool save_flow = true;
 
@@ -99,8 +99,8 @@ private:
     void Compute_Kr_GPU();    // Compute relative permeability
     void Compute_Q_GPU();     // Compute fluid fluxes using Kr
     void Update_Pw_GPU();     // Compute residual and update water pressure
-    void Update_V_GPU();      // Update solid velocity (includes damping)
-    void Update_U_GPU();      // Update solid displacement
+    void Update_V_GPU();      // Update solid
+    void Update_U_GPU();      // Update solid displacement (includes damping of V!)
     void Update_Stress_GPU(); // Update stress and compute residual
 
 public:

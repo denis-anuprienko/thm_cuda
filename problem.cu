@@ -273,6 +273,7 @@ void Problem::SolveOnGPU()
 
     Tyy     = new DAT[nx*ny];
     Txx     = new DAT[nx*ny];
+    Txy     = new DAT[(nx+1)*(ny+1)];
     Ux      = new DAT[(nx+1)*ny];
     Uy      = new DAT[nx*(ny+1)];
     Vx      = new DAT[(nx+1)*ny];
@@ -338,6 +339,7 @@ void Problem::SolveOnGPU()
 
     delete [] Tyy;
     delete [] Txx;
+    delete [] Txy;
     delete [] Ux;
     delete [] Uy;
 }
@@ -370,8 +372,8 @@ __global__ void kernel_SetIC(DAT *Txx, DAT *Tyy, DAT *Txy,
         Txx[i+j*nx] = 0.0;
         Tyy[i+j*nx] = 0.0;
 
-        rsd_m_x[i+j*nx] = 1.0;
-        rsd_m_y[i+j*nx] = 1.0;
+        rsd_m_x[i+j*nx] = 0.0;
+        rsd_m_y[i+j*nx] = 0.0;
     }
     // Vertical face variables - x-fluxes, for example
     if(i >=0 && i <= nx && j >=0 && j < ny){
@@ -380,6 +382,8 @@ __global__ void kernel_SetIC(DAT *Txx, DAT *Tyy, DAT *Txy,
         Krx[ind] = 1.0;
         Ux[ind] = 0.0;
         Vx[ind] = 0.0;
+//        if(i > 0 && i < nx)
+//            Vx[ind] = 1e-3;
     }
     // Horizontal face variables - y-fluxes, for example
     if(i >=0 && i < nx && j >=0 && j <= ny){
@@ -388,6 +392,8 @@ __global__ void kernel_SetIC(DAT *Txx, DAT *Tyy, DAT *Txy,
         Kry[ind] = 1.0;
         Vy[ind] = 0.0;
         Uy[ind] = 0.0;
+        if(j > 0 && j < ny)
+            Vy[ind] = 1e-3;
     }
 
     if(i >= 0 && i <= nx && j >= 0 && j <= ny){
@@ -406,9 +412,9 @@ __global__ void kernel_Update_V(DAT *Vx, DAT *Vy, DAT *Txx, DAT *Tyy, DAT *Txy, 
         DAT dTxxdx  = (Txx[i+j*nx] - Txx[i-1+j*nx]) / dx;
         DAT dPwSwdx = (Sw[i+j*nx]*Pw[i+j*nx] - Sw[i-1+j*nx]*Pw[i-1+j*nx]) / dx;
 
-        Vx[i+j*(nx+1)]     += dt_m * (1./rho_s*(dTxxdx - dPwSwdx));
+        Vx[i+j*(nx+1)]     += dt_m * (1./rho_s*(dTxxdx - 0*dPwSwdx));
 
-        if(j > 0 && j < ny-1)
+        //if(j > 0 && j < ny-1)
             Vx[i+j*(nx+1)] += dt_m/rho_s * (Txy[i+(j+1)*(nx+1)] - Txy[i+j*(nx+1)]) / dy;
     }
 
@@ -416,7 +422,7 @@ __global__ void kernel_Update_V(DAT *Vx, DAT *Vy, DAT *Txx, DAT *Tyy, DAT *Txy, 
         DAT dTyydy = (Tyy[i+j*nx] - Tyy[i+(j-1)*nx]) / dy;
         DAT dPwSwdy = (Sw[i+j*nx]*Pw[i+j*nx] - Sw[i+(j-1)*nx]*Pw[i+(j-1)*nx]) / dy;
 
-        Vy[i+j*nx]     += dt_m * (1./rho_s*(dTyydy - dPwSwdy) - g);
+        Vy[i+j*nx]     += dt_m * (1./rho_s*(dTyydy - 0*dPwSwdy) - g);
 
         //if(i > 0 && i < nx-1)
             Vy[i+j*nx] += dt_m/rho_s * (Txy[i+1+j*(nx+1)] - Txy[i+j*(nx+1)]) / dx;
@@ -427,10 +433,10 @@ __global__ void kernel_Update_V(DAT *Vx, DAT *Vy, DAT *Txx, DAT *Tyy, DAT *Txy, 
         Vx[i+j*(nx+1)] += dt_m * (1./rho_s*(Txx[i+j*nx]-0.)/dx);
     }
     if(i == nx && j >= 0 && j < ny){ // Right BCs: zero stress
-        Vx[i+j*(nx+1)] += dt_m/rho_s * (0.-Txx[i-1+j*nx])/dx;
+        //Vx[i+j*(nx+1)] += dt_m/rho_s * (0.-Txx[i-1+j*nx])/dx;
     }
     if(j == 0 && i >= 0 && i < nx){ // Lower BCs: stress equal to water pressure?
-        Vy[i+j*nx] += dt_m * (1./rho_s*(Tyy[i+0*nx]-Pw[i+0*nx])/dy - g);
+        Vy[i+j*nx] += dt_m * (1./rho_s*(Tyy[i+0*nx]-0*Pw[i+0*nx])/dy - g);
     }
 }
 
@@ -474,27 +480,28 @@ __global__ void kernel_Update_Stress(DAT *Txx, DAT *Tyy, DAT *Txy, DAT *Vx, DAT 
         Txy[i+j*(nx+1)] += dt_m * mu*(dVxdy + dVydx);
     }
 
-    if(i >= 0 && i < nx && j >= 0 && j < ny){
+    //if(i >= 0 && i < nx && j >= 0 && j < ny){
+    if(i >= 0 && i < nx && j > 0 && j < ny-1){    // shit
         int ind = i+nx*j;
 
         DAT dVxdx = (Vx[i+1+j*(nx+1)] - Vx[i+j*(nx+1)])/dx;
         DAT dVydy = (Vy[i+(j+1)*nx]   - Vy[i+j*nx])/dy;
         DAT dSwdt = (Sw[ind] - Sw_old[ind])/dt;
 
-        Txx[ind] += dt_m * ((2*mu+lam)*(dVxdx-dSwdt-0e-2*Sw[ind]+0.0) + lam*dVydy);
-        Tyy[ind] += dt_m * ((2*mu+lam)*(dVydy-dSwdt-0e-2*Sw[ind]+0.0) + lam*dVxdx);
+        Txx[ind] += dt_m * ((2*mu+lam)*(dVxdx-0*dSwdt-0e-2*Sw[ind]+0.0) + lam*dVydy);
+        Tyy[ind] += dt_m * ((2*mu+lam)*(dVydy-0*dSwdt-0e-2*Sw[ind]+0.0) + lam*dVxdx);
 
         if(i >= 0 && i < nx && j >= 0 && j < ny){
-        //if(i > 3 && i < nx-3 && j > 3 && j < ny-3){ // shit
+        //if(i >= 0 && i < nx-1 && j >= 0 && j < ny-1){ // shit
            DAT rmx_old = rsd_m_x[ind];
            DAT rmy_old = rsd_m_y[ind];
            rsd_m_x[ind] = (Txx[i+1+j*nx]-Txx[ind])/dx
-                        - (Sw[i+1+j*nx]*Pw[i+1+j*nx]-Sw[ind]*Pw[ind])/dx
+                        - 0*(Sw[i+1+j*nx]*Pw[i+1+j*nx]-Sw[ind]*Pw[ind])/dx
                         + (Txy[i+(j+1)*(nx+1)]-Txy[i+j*(nx+1)])/dy
                         - 0*rho_s*g;
 
            rsd_m_y[ind] = (Tyy[i+(j+1)*nx]-Tyy[ind])/dy
-                        - (Sw[i+(j+1)*nx]*Pw[i+(j+1)*nx]-Sw[ind]*Pw[ind])/dy
+                        - 0*(Sw[i+(j+1)*nx]*Pw[i+(j+1)*nx]-Sw[ind]*Pw[ind])/dy
                         + (Txy[i+1+j*(nx+1)]-Txy[i+j*(nx+1)])/dy
                         - rho_s*g;
 
@@ -509,8 +516,8 @@ __global__ void kernel_Update_Stress(DAT *Txx, DAT *Tyy, DAT *Txy, DAT *Vx, DAT 
 //               rsd_m_x[ind] = 0.0;
 //           if(fabs(rsd_m_y[ind] - rmy_old) < 1e1 || fabs(rmy_old) < 1e-9)
 //               rsd_m_y[ind] = 0.0;
-           rsd_m_x[ind] = fabs(0.5 * (Vx[i+j*(nx+1)] + Vx[i+1+j*(nx+1)]));
-           rsd_m_y[ind] = fabs(0.5 * (Vy[i+j*nx]    + Vy[i+(j+1)*nx]));
+//           rsd_m_x[ind] = fabs(0.5 * (Vx[i+j*(nx+1)] + Vx[i+1+j*(nx+1)]));
+//           rsd_m_y[ind] = fabs(0.5 * (Vy[i+j*nx]    + Vy[i+(j+1)*nx]));
         }
     }
 }
@@ -657,6 +664,7 @@ void Problem::SaveVTK_GPU(std::string path)
 
     cudaMemcpy(Tyy, dev_Tyy, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToHost);
     cudaMemcpy(Txx, dev_Txx, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToHost);
+    cudaMemcpy(Txy, dev_Txy, sizeof(DAT) * (nx+1)*(ny+1), cudaMemcpyDeviceToHost);
     cudaMemcpy(Ux, dev_Ux, sizeof(DAT) * (nx+1)*ny, cudaMemcpyDeviceToHost);
     cudaMemcpy(Uy, dev_Uy, sizeof(DAT) * nx*(ny+1), cudaMemcpyDeviceToHost);
     cudaMemcpy(Vx, dev_Vx, sizeof(DAT) * (nx+1)*ny, cudaMemcpyDeviceToHost);
