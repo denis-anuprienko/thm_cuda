@@ -1,0 +1,8 @@
+# ninja log v5
+6	752	616460393	CMakeFiles/shale_1phase.dir/main.cpp.obj	5b995527d02edf2d
+3	1206	616460393	CMakeFiles/shale_1phase.dir/problem.cpp.obj	dd6633b4d7861fd1
+1	15075	616463143	CMakeFiles/shale_1phase.dir/problem.cu.obj	a107aed9f93887f2
+15085	18115	616463151	CMakeFiles/shale_1phase.dir/cmake_device_link.obj	6b9b960a4178be29
+4	14997	616463227	CMakeFiles/shale_1phase.dir/problem.cu.obj	a107aed9f93887f2
+14998	18227	616463235	CMakeFiles/shale_1phase.dir/cmake_device_link.obj	6b9b960a4178be29
+18228	20004	616463236	shale_1phase.exe	98581e8b9873383d
