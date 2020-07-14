@@ -22,8 +22,6 @@ class Problem
 private:
     const DAT Lx      = 0.025;      // domain length, m
     const DAT Ly      = 0.025;
-    const DAT K       = 9.87e-12;   // intrinsic permeability, m^2
-    const DAT phi     = 0.4;        // porosity
     const DAT muw     = 1.2e-3;     // water dynamic viscoity, Pa*s
     const DAT rhow    = 1e3;        // water density, kg/m^3
     const DAT rho_s   = 1e3;        // solid density, kg/m^3
@@ -44,7 +42,6 @@ private:
     const DAT dx      = Lx/nx;    // cell size
     const DAT dy      = Ly/ny;
     const DAT niter   = 1e5;      // number of PT steps
-    const DAT eps_a_m = 1e-7;     // absolute tolerance, mechanics
     const DAT eps_a_h = 1e-6;     // absolute tolerance, flow
     const DAT damp    = 1e1;
 
@@ -52,7 +49,7 @@ private:
     const DAT Time      = dt*100;
     const DAT nt        = Time / dt;
 
-    bool do_mech   = true;
+    bool do_mech   = false;
     bool do_flow   = true;
     bool save_mech = true;
     bool save_flow = true;
@@ -60,34 +57,17 @@ private:
     int save_intensity;
 
     // Unknowns
-    DAT *Pw;        // Water pressure
-    DAT *Sw;        // Water saturation
-    DAT *Pw_old;
-    DAT *Sw_old;
+    DAT *Pf;        // Fluid pressure
+    DAT *Pf_old;
     DAT *qx, *qy;   // Fluid fluxes
-    DAT *Krx, *Kry; // Relative permeabilities for water
+    DAT *Kx, *Ky;   // Pressure-dependent permeabilities
     DAT *rsd_h;
-    DAT *Txx, *Tyy; // Stresses
-    DAT *Txy;
-    DAT *Vx, *Vy;   // Solid velocities
-    DAT *Ux, *Uy;   // Solid displacements
-    DAT *rsd_m_x;
-    DAT *rsd_m_y;
     // Unknowns on GPU
-    DAT *dev_Pw;
-    DAT *dev_Sw;
-    DAT *dev_Pw_old;
-    DAT *dev_Sw_old;
+    DAT *dev_Pf;
+    DAT *dev_Pf_old;
     DAT *dev_qx, *dev_qy;
-    DAT *dev_Krx, *dev_Kry;
+    DAT *dev_Kx, *dev_Ky;
     DAT *dev_rsd_h;
-    DAT *dev_Txx, *dev_Tyy;
-    DAT *dev_Txy;
-    DAT *dev_Vx, *dev_Vy;
-    DAT *dev_Ux, *dev_Uy;
-    DAT *dev_Ux_old, *dev_Uy_old;
-    DAT *dev_rsd_m_x;
-    DAT *dev_rsd_m_y;
 
     std::string respath;
 
@@ -96,12 +76,9 @@ private:
     void M_Substep_GPU();     // Mechanical substep
     void SetIC_GPU();         // Set initial conditions
     void Compute_Sw_GPU();    // Compute water saturation
-    void Compute_Kr_GPU();    // Compute relative permeability
+    void Compute_K_GPU();     // Compute permeability
     void Compute_Q_GPU();     // Compute fluid fluxes using Kr
-    void Update_Pw_GPU();     // Compute residual and update water pressure
-    void Update_V_GPU();      // Update solid
-    void Update_U_GPU();      // Update solid displacement (includes damping of V!)
-    void Update_Stress_GPU(); // Update stress and compute residual
+    void Update_Pf_GPU();     // Compute residual and update water pressure
 
 public:
     Problem(){ Init(); }

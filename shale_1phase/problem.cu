@@ -87,7 +87,7 @@ void Problem::Update_Pf_GPU()
     kernel_Update_Pf<<<dimGrid,dimBlock>>>(dev_rsd_h, dev_Pf, dev_Pf_old,
                                            dev_qx, dev_qy,
                                            nx, ny, dx, dy, dt,
-                                           phi, rhow, 0.0);
+                                           0.1, rhow, 0.0);
     cudaError_t err = cudaGetLastError();
     if(err != 0)
         printf("Error %x at Pw\n", err);
@@ -129,8 +129,8 @@ void Problem::SolveOnGPU()
         if(do_flow)
 ;//            H_Substep_GPU();
         string name = respath + "/sol" + to_string(it) + ".vtk";
-        SaveVTK_GPU(name);
-        SaveDAT_GPU(it);
+        //SaveVTK_GPU(name);
+        //SaveDAT_GPU(it);
     }
 
     cudaFree(dev_Pf);
