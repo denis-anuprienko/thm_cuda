@@ -147,6 +147,16 @@ void Problem::SaveVTK(string path)
                 uy_l = Uy[i+(j-1)*nx];
             if(j < ny)
                 uy_u = Uy[i+(j+1)*nx];
+
+            if(i == 0)
+                ux_l = ux_r;
+            if(i == nx)
+                ux_r = ux_l;
+            if(j == 0)
+                uy_l = uy_u;
+            if(j == ny)
+                uy_u = uy_l;
+
             out << 0.5*(ux_l+ux_r) << " " <<
                    0.5*(uy_u+uy_l) << " 0.0" << endl;
         }

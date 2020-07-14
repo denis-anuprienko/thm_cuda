@@ -6,7 +6,7 @@
 using namespace std;
 
 #define BLOCK_DIM 16
-#define dt_h      1e-3
+#define dt_h      1e-2
 #define dt_m      1e-6
 
 void FindMax(DAT *dev_arr, DAT *max, int size);
@@ -416,9 +416,9 @@ __global__ void kernel_Update_V(DAT *Vx, DAT *Vy, DAT *Txx, DAT *Tyy, DAT *Txy, 
         DAT dTxxdx  = (Txx[i+j*nx] - Txx[i-1+j*nx]) / dx;
         DAT dPwSwdx = (Sw[i+j*nx]*Pw[i+j*nx] - Sw[i-1+j*nx]*Pw[i-1+j*nx]) / dx;
 
-        Vx[i+j*(nx+1)]     += dt_m * (1./rho_s*(dTxxdx - 0*dPwSwdx));
+        Vx[i+j*(nx+1)]     += dt_m * (1./rho_s*(dTxxdx - dPwSwdx));
 
-        if(j > 0 && j < ny-1)
+        //if(j > 0 && j < ny-1)
             Vx[i+j*(nx+1)] += dt_m/rho_s * (Txy[i+(j+1)*(nx+1)] - Txy[i+j*(nx+1)]) / dy;
     }
 
@@ -426,9 +426,9 @@ __global__ void kernel_Update_V(DAT *Vx, DAT *Vy, DAT *Txx, DAT *Tyy, DAT *Txy, 
         DAT dTyydy = (Tyy[i+j*nx] - Tyy[i+(j-1)*nx]) / dy;
         DAT dPwSwdy = (Sw[i+j*nx]*Pw[i+j*nx] - Sw[i+(j-1)*nx]*Pw[i+(j-1)*nx]) / dy;
 
-        Vy[i+j*nx]     += dt_m * (1./rho_s*(dTyydy - 0*dPwSwdy) - g);
+        Vy[i+j*nx]     += dt_m * (1./rho_s*(dTyydy - dPwSwdy) - g);
 
-        if(i > 0 && i < nx-1)
+        //if(i > 0 && i < nx-1)
             Vy[i+j*nx] += dt_m/rho_s * (Txy[i+1+j*(nx+1)] - Txy[i+j*(nx+1)]) / dx;
     }
 
@@ -440,7 +440,7 @@ __global__ void kernel_Update_V(DAT *Vx, DAT *Vy, DAT *Txx, DAT *Tyy, DAT *Txy, 
         Vx[i+j*(nx+1)] += dt_m/rho_s * (0.-Txx[i-1+j*nx])/dx;
     }
     if(j == 0 && i >= 0 && i < nx){ // Lower BCs: stress equal to water pressure?
-        Vy[i+j*nx] += dt_m * (1./rho_s*(Tyy[i+0*nx]-0*Pw[i+0*nx])/dy - g);
+        Vy[i+j*nx] += dt_m * (1./rho_s*(Tyy[i+0*nx]-Pw[i+0*nx])/dy - g);
     }
 }
 
@@ -452,12 +452,12 @@ __global__ void kernel_Update_U(DAT *Ux, DAT *Uy, DAT *Vx, DAT *Vy,
     int j = blockDim.y * blockIdx.y + threadIdx.y;
 
     if(i >= 0 && i <= nx && j >= 0 && j <= ny-1){
-        Vx[i+j*(nx+1)] /= (1. + 1e0/nx);
+        Vx[i+j*(nx+1)] /= (1. + 1e-1/nx);
         Ux[i+j*(nx+1)] += dt_m * Vx[i+j*(nx+1)];
     }
 
     if(i >= 0 && i <= nx-1 && j >= 0 && j <= ny){
-        Vy[i+j*nx] /= (1. + 1e0/ny);
+        Vy[i+j*nx] /= (1. + 1e-1/ny);
         Uy[i+j*nx] += dt_m * Vy[i+j*nx];
     }
 }
@@ -499,19 +499,19 @@ __global__ void kernel_Update_Stress(DAT *Txx, DAT *Tyy, DAT *Txy, DAT *Vx, DAT 
 
     // Residual x-component, 'i' is x-index of a vertical face
     if(i >= 1 && i <= nx-1 && j > 0 && j < ny-1){
-//        DAT dTxxdx  = (Txx[i+j*nx] - Txx[i-1+j*nx]) / dx;
-//        DAT dTxydy  = (Txy[i+(j+1)*(nx+1)] - Txy[i+j*(nx+1)]) / dy;
-//        DAT dPwSwdx = (Pw[i+j*nx]*Sw[i+j*nx] - Pw[i-1+j*nx]*Sw[i-1+j*nx]) / dx;
-//        rsd_m_x[i+j*nx] = fabs(dTxxdx + dTxydy - dPwSwdx);
-        rsd_m_x[i+j*nx] = fabs(Vx[i+j*(nx+1)]);
+        DAT dTxxdx  = (Txx[i+j*nx] - Txx[i-1+j*nx]) / dx;
+        DAT dTxydy  = (Txy[i+(j+1)*(nx+1)] - Txy[i+j*(nx+1)]) / dy;
+        DAT dPwSwdx = (Pw[i+j*nx]*Sw[i+j*nx] - Pw[i-1+j*nx]*Sw[i-1+j*nx]) / dx;
+        rsd_m_x[i+j*nx] = fabs(dTxxdx + dTxydy - dPwSwdx);
+//        rsd_m_x[i+j*nx] = fabs(Vx[i+j*(nx+1)]);
     }
     // Residual y-component, 'j' is y-index of a horizontal face
     if(j >= 1 && j <= ny-1 && i > 0 && i < nx-1){
-//        DAT dTyydy  = (Tyy[i+j*nx] - Tyy[i+(j-1)*nx]) / dy;
-//        DAT dTxydx  = (Txy[i+1+j*(nx+1)] - Txy[i+j*(nx+1)]) / dx;
-//        DAT dPwSwdy = (Pw[i+j*nx]*Sw[i+j*nx] - Pw[i+(j-1)*nx]*Sw[i+(j-1)*nx]) / dx;
-//        rsd_m_y[i+j*nx] = fabs(dTyydy + dTxydx - dPwSwdy - rho_s*g);
-        rsd_m_y[i+j*nx] = fabs(Vy[i+j*nx]);
+        DAT dTyydy  = (Tyy[i+j*nx] - Tyy[i+(j-1)*nx]) / dy;
+        DAT dTxydx  = (Txy[i+1+j*(nx+1)] - Txy[i+j*(nx+1)]) / dx;
+        DAT dPwSwdy = (Pw[i+j*nx]*Sw[i+j*nx] - Pw[i+(j-1)*nx]*Sw[i+(j-1)*nx]) / dx;
+        rsd_m_y[i+j*nx] = fabs(dTyydy + dTxydx - dPwSwdy - rho_s*g);
+//        rsd_m_y[i+j*nx] = fabs(Vy[i+j*nx]);
     }
 
 }

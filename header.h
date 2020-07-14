@@ -44,12 +44,12 @@ private:
     const DAT dx      = Lx/nx;    // cell size
     const DAT dy      = Ly/ny;
     const DAT niter   = 1e5;      // number of PT steps
-    const DAT eps_a_m = 1e-6;     // absolute tolerance, mechanics
+    const DAT eps_a_m = 1e-7;     // absolute tolerance, mechanics
     const DAT eps_a_h = 1e-6;     // absolute tolerance, flow
     const DAT damp    = 1e1;
 
     const DAT dt        = 1e-1;    // Seconds
-    const DAT Time      = dt*20;
+    const DAT Time      = dt*100;
     const DAT nt        = Time / dt;
 
     bool do_mech   = true;
