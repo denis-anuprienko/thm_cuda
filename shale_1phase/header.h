@@ -30,7 +30,7 @@ private:
 
 
     // Numerics
-    const int nx      = 256;       // number of cells
+    const int nx      = 512;       // number of cells
     const int ny      = nx;
     const DAT dx      = Lx/nx;    // cell size
     const DAT dy      = Ly/ny;

@@ -23,8 +23,11 @@ __global__ void kernel_Compute_K(DAT *Pf, DAT *Kx, DAT *Ky,
 
 __global__ void kernel_Update_Pf(DAT *rsd, DAT *Pf, DAT *Pf_old,
                                  DAT *qx, DAT *qy, const int nx, const int ny,
-                                 const DAT dx, const DAT dy, const DAT dt,
-                                 const DAT phi, const DAT rhow, const DAT sstor);
+                                 const DAT dx, const DAT dy, const DAT dt);
+
+__global__ void kernel_Update_Poro(DAT *phi, DAT *Pf, DAT *Pf_old,
+                                   const int nx, const int ny,
+                                   const DAT dx, const DAT dy, const DAT dt);
 
 void FindMax(DAT *dev_arr, DAT *max, int size)
 {
@@ -87,11 +90,22 @@ void Problem::Update_Pf_GPU()
     dim3 dimGrid((nx+dimBlock.x-1)/dimBlock.x, (ny+dimBlock.y-1)/dimBlock.y);
     kernel_Update_Pf<<<dimGrid,dimBlock>>>(dev_rsd_h, dev_Pf, dev_Pf_old,
                                            dev_qx, dev_qy,
-                                           nx, ny, dx, dy, dt,
-                                           0.1, rhof, 0.0);
+                                           nx, ny, dx, dy, dt);
     cudaError_t err = cudaGetLastError();
     if(err != 0)
         printf("Error %x at Pf\n", err);
+}
+
+void Problem::Update_Poro()
+{
+    dim3 dimBlock(BLOCK_DIM, BLOCK_DIM);
+    dim3 dimGrid((nx+dimBlock.x-1)/dimBlock.x, (ny+dimBlock.y-1)/dimBlock.y);
+    kernel_Update_Poro<<<dimGrid,dimBlock>>>(dev_phi, dev_Pf, dev_Pf_old,
+                                             nx, ny,
+                                             dx, dy, dt);
+    cudaError_t err = cudaGetLastError();
+    if(err != 0)
+        printf("Error %x at Poro\n", err);
 }
 
 void Problem::H_Substep_GPU()
@@ -113,6 +127,7 @@ void Problem::H_Substep_GPU()
             }
         }
     }
+    Update_Poro();
 }
 
 void Problem::SolveOnGPU()
@@ -265,8 +280,7 @@ __global__ void kernel_Compute_K(DAT *Pf, DAT *Kx, DAT *Ky,
 __global__ void kernel_Update_Pf(DAT *rsd, DAT *Pf, DAT *Pf_old,
                                  DAT *qx, DAT *qy,
                                  const int nx, const int ny,
-                                 const DAT dx,  const DAT dy,   const DAT dt,
-                                 const DAT phi, const DAT rhow, const DAT sstor)
+                                 const DAT dx,  const DAT dy,   const DAT dt)
 {
     int i = blockDim.x * blockIdx.x + threadIdx.x;
     int j = blockDim.y * blockIdx.y + threadIdx.y;
@@ -279,6 +293,19 @@ __global__ void kernel_Update_Pf(DAT *rsd, DAT *Pf, DAT *Pf_old,
                  + (qy[i+(j+1)*nx] - qy[i+j*nx])/dy;
         Pf[ind]  -= dt_h * rsd[ind];
         rsd[ind] = fabs(rsd[ind]);
+    }
+}
+
+__global__ void kernel_Update_Poro(DAT *phi, DAT *Pf, DAT *Pf_old,
+                                   const int nx, const int ny,
+                                   const DAT dx, const DAT dy, const DAT dt)
+{
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    int j = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if(i >= 0 && i < nx && j >= 0 && j < ny){
+        int ind = i+nx*j;
+        phi[ind] += 1e-6*phi[ind]*(Pf[ind] - Pf_old[ind]);
     }
 }
 
