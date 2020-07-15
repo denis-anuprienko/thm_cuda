@@ -11,7 +11,7 @@ using namespace std;
 
 void FindMax(DAT *dev_arr, DAT *max, int size);
 
-__global__ void kernel_SetIC(DAT *Pf, DAT *qx, DAT *qy, DAT *Kx, DAT *Ky,
+__global__ void kernel_SetIC(DAT *Pf, DAT *qx, DAT *qy, DAT *Kx, DAT *Ky, double *phi,
                              DAT *rsd_h,
                              const int nx, const int ny, const DAT Lx, const DAT Ly);
 
@@ -50,7 +50,8 @@ void Problem::SetIC_GPU()
     printf("Launching %dx%d blocks of %dx%d threads\n", (nx+1+dimBlock.x-1)/dimBlock.x,
            (ny+1+dimBlock.y-1)/dimBlock.y, BLOCK_DIM, BLOCK_DIM);
     //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
-    kernel_SetIC<<<dimGrid,dimBlock>>>(dev_Pf, dev_qx, dev_qy, dev_Kx, dev_Ky, dev_rsd_h,
+    kernel_SetIC<<<dimGrid,dimBlock>>>(dev_Pf, dev_qx, dev_qy, dev_Kx, dev_Ky,
+                                       dev_phi, dev_rsd_h,
                                        nx, ny, Lx, Ly);
     cudaError_t err = cudaGetLastError();
     if(err != 0)
@@ -126,6 +127,7 @@ void Problem::SolveOnGPU()
     cudaMalloc((void**)&dev_qy,     sizeof(DAT) * nx*(ny+1));
     cudaMalloc((void**)&dev_Kx,     sizeof(DAT) * (nx+1)*ny);
     cudaMalloc((void**)&dev_Ky,     sizeof(DAT) * nx*(ny+1));
+    cudaMalloc((void**)&dev_phi,    sizeof(DAT) * nx*ny);
     cudaMalloc((void**)&dev_rsd_h,  sizeof(DAT) * nx*ny);
     cudaEventRecord(tbeg);
 
@@ -135,6 +137,7 @@ void Problem::SolveOnGPU()
     Pf      = new DAT[nx*ny];
     qx      = new DAT[(nx+1)*ny];
     qy      = new DAT[nx*(ny+1)];
+    phi     = new DAT[nx*ny];
     rsd_h   = new DAT[nx*ny];
 
     SetIC_GPU();
@@ -159,6 +162,7 @@ void Problem::SolveOnGPU()
     cudaFree(dev_qy);
     cudaFree(dev_Kx);
     cudaFree(dev_Ky);
+    cudaFree(dev_phi);
     cudaFree(dev_rsd_h);
 
     cudaEventRecord(tend);
@@ -171,11 +175,12 @@ void Problem::SolveOnGPU()
     delete [] Pf;
     delete [] qx;
     delete [] qy;
+    delete [] phi;
     delete [] rsd_h;
 }
 
 
-__global__ void kernel_SetIC(DAT *Pf, DAT *qx, DAT *qy, DAT *Kx, DAT *Ky, DAT *rsd_h,
+__global__ void kernel_SetIC(DAT *Pf, DAT *qx, DAT *qy, DAT *Kx, DAT *Ky, DAT *phi, DAT *rsd_h,
                              const int nx, const int ny, const DAT Lx, const DAT Ly)
 {
     int i = blockDim.x * blockIdx.x + threadIdx.x;
@@ -195,6 +200,7 @@ __global__ void kernel_SetIC(DAT *Pf, DAT *qx, DAT *qy, DAT *Kx, DAT *Ky, DAT *r
         //DAT rad = (DAT)(i*i + j*j);
         //Pf[i+j*nx] = sqrt(rad);
         //Pf[i+j*nx] = 8e6;
+        phi[i+j*nx] = 0.16;
         rsd_h[i+j*nx] = 0.0;
     }
     // Vertical face variables - x-fluxes, for example
@@ -283,6 +289,7 @@ void Problem::SaveVTK_GPU(std::string path)
     cudaMemcpy(Pf, dev_Pf, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToHost);
     cudaMemcpy(qx, dev_qx, sizeof(DAT) * (nx+1)*ny, cudaMemcpyDeviceToHost);
     cudaMemcpy(qy, dev_qy, sizeof(DAT) * nx*(ny+1), cudaMemcpyDeviceToHost);
+    cudaMemcpy(phi, dev_phi, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToHost);
 
     SaveVTK(path);
 }
