@@ -11,7 +11,7 @@ using namespace std;
 
 void FindMax(DAT *dev_arr, DAT *max, int size);
 
-__global__ void kernel_SetIC(DAT *Pf, DAT *qx, DAT *qy, DAT *Kx, DAT *Ky, double *phi,
+__global__ void kernel_SetIC(DAT *Pf, DAT *qx, DAT *qy, DAT *Kx, DAT *Ky, DAT *phi,
                              DAT *rsd_h,
                              const int nx, const int ny, const DAT Lx, const DAT Ly);
 
@@ -19,11 +19,12 @@ __global__ void kernel_Compute_Q(DAT *qx, DAT *qy, DAT *Pf, DAT *Kx, DAT *Ky,
                                  const int nx, const int ny, const DAT dx, const DAT dy,
                                  const DAT rhow, const DAT muw, const DAT g);
 __global__ void kernel_Compute_K(DAT *Pf, DAT *Kx, DAT *Ky,
-                                 const int nx, const int ny, const DAT K0);
+                                 const int nx, const int ny, const DAT K0,
+                                 const DAT gamma, const DAT Pt, const DAT P0);
 
-__global__ void kernel_Update_Pf(DAT *rsd, DAT *Pf, DAT *Pf_old,
+__global__ void kernel_Update_Pf(DAT *rsd, DAT *Pf, DAT *Pf_old, DAT *phi,
                                  DAT *qx, DAT *qy, const int nx, const int ny,
-                                 const DAT dx, const DAT dy, const DAT dt);
+                                 const DAT dx, const DAT dy, const DAT dt, const DAT c_f, const DAT c_phi);
 
 __global__ void kernel_Update_Poro(DAT *phi, DAT *Pf, DAT *Pf_old,
                                    const int nx, const int ny,
@@ -78,7 +79,7 @@ void Problem::Compute_K_GPU()
     dim3 dimBlock(BLOCK_DIM, BLOCK_DIM);
     dim3 dimGrid((nx+1+dimBlock.x-1)/dimBlock.x, (ny+1+dimBlock.y-1)/dimBlock.y);
     kernel_Compute_K<<<dimGrid,dimBlock>>>(dev_Pf, dev_Kx, dev_Ky,
-                                           nx, ny, K0);
+                                           nx, ny, K0, gamma, Pt, P0);
     cudaError_t err = cudaGetLastError();
     if(err != 0)
         printf("Error %x at Kr\n", err);
@@ -88,9 +89,10 @@ void Problem::Update_Pf_GPU()
 {
     dim3 dimBlock(BLOCK_DIM, BLOCK_DIM);
     dim3 dimGrid((nx+dimBlock.x-1)/dimBlock.x, (ny+dimBlock.y-1)/dimBlock.y);
-    kernel_Update_Pf<<<dimGrid,dimBlock>>>(dev_rsd_h, dev_Pf, dev_Pf_old,
+    kernel_Update_Pf<<<dimGrid,dimBlock>>>(dev_rsd_h, dev_Pf, dev_Pf_old, dev_phi,
                                            dev_qx, dev_qy,
-                                           nx, ny, dx, dy, dt);
+                                           nx, ny, dx, dy, dt,
+                                           c_f, c_phi);
     cudaError_t err = cudaGetLastError();
     if(err != 0)
         printf("Error %x at Pf\n", err);
@@ -260,7 +262,8 @@ __global__ void kernel_Compute_Q(DAT *qx, DAT *qy, DAT *Pf, DAT *Kx, DAT *Ky,
 }
 
 __global__ void kernel_Compute_K(DAT *Pf, DAT *Kx, DAT *Ky,
-                                 const int nx, const int ny, const DAT K0)
+                                 const int nx, const int ny,
+                                 const DAT K0, const DAT gamma, const DAT Pt, const DAT P0)
 {
     int i = blockDim.x * blockIdx.x + threadIdx.x;
     int j = blockDim.y * blockIdx.y + threadIdx.y;
@@ -268,26 +271,28 @@ __global__ void kernel_Compute_K(DAT *Pf, DAT *Kx, DAT *Ky,
     if(i > 0 && i < nx && j >= 0 && j <= ny-1){ // Internal faces
         // Upwind approach
         DAT Pupw = max(Pf[i+j*nx], Pf[i+1+j*nx]);
-        Kx[i+j*(nx+1)] = K0;
+        Kx[i+j*(nx+1)] = K0 * exp(-gamma*(Pt-Pupw-P0));
     }
 
     if(i >= 0 && i <= nx-1 && j > 0 && j < ny){ // Internal faces
-        // todo
-        Ky[i+j*nx] = K0;
+        // Upwind
+        DAT Pupw = max(Pf[i+j*nx], Pf[i+(j+1)*nx]);
+        Ky[i+j*nx] = K0 * exp(-gamma*(Pt-Pupw-P0));
     }
 }
 
-__global__ void kernel_Update_Pf(DAT *rsd, DAT *Pf, DAT *Pf_old,
+__global__ void kernel_Update_Pf(DAT *rsd, DAT *Pf, DAT *Pf_old, DAT *phi,
                                  DAT *qx, DAT *qy,
                                  const int nx, const int ny,
-                                 const DAT dx,  const DAT dy,   const DAT dt)
+                                 const DAT dx,  const DAT dy, const DAT dt,
+                                 const DAT c_f, const DAT c_phi)
 {
     int i = blockDim.x * blockIdx.x + threadIdx.x;
     int j = blockDim.y * blockIdx.y + threadIdx.y;
 
     if(i >= 0 && i < nx && j >= 0 && j < ny){
         int ind = i+nx*j;
-        DAT C_t = 1.0;
+        DAT C_t = c_f*phi[ind] + c_phi*phi[ind]/(1.0-phi[ind]);
         rsd[ind] = C_t*(Pf[ind]-Pf_old[ind])/dt
                  + (qx[i+1+j*(nx+1)] - qx[i+j*(nx+1)])/dx
                  + (qy[i+(j+1)*nx] - qy[i+j*nx])/dy;

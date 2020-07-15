@@ -8,6 +8,7 @@ void Problem::Init()
     //cout << "Save files every " << save_intensity << " step" << endl;
     respath = std::experimental::filesystem::current_path().string() + "\\res";
     printf("Init finished\n");
+    printf("c_f = %e, c_pji = %e\n", c_f, c_phi);
     fflush(stdout);
 }
 

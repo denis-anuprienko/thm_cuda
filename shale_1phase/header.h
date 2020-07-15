@@ -20,17 +20,21 @@
 class Problem
 {
 private:
-    const DAT Lx      = 0.012;      // domain length, m
+    const DAT Lx      = 0.012;        // domain length, m
     const DAT Ly      = 0.012;
-    const DAT K0      = 1e-18;      // initial intrinsic permeability, m^2
-    const DAT muf     = 6.0e-5;     // fluid dynamic viscoity, Pa*s
-    const DAT rhof    = 7.3e2;      // fluid density, kg/m^3
-    const DAT rhos    = 2.0e3;      // solid density, kg/m^3
-    const DAT g       = 9.81;       // m/s^2
-
+    const DAT K0      = 1e-18;        // initial intrinsic permeability, m^2
+    const DAT muf     = 6.0e-5;       // fluid dynamic viscoity, Pa*s
+    const DAT rhof    = 7.3e2;        // fluid density, kg/m^3
+    const DAT rhos    = 2.0e3;        // solid density, kg/m^3
+    const DAT g       = 9.81;         // m/s^2
+    const DAT c_f     = 1e0;//4.5e-4/(1e6); // parameter from van Noort and Yarushina, 1/Pa
+    const DAT c_phi   = 1e0;//12e-3/(1e6);  // parameter from van Noort and Yarushina, 1/Pa
+    const DAT Pt      = 4.3e7;        // confining pressure, Pa
+    const DAT P0      = 1e5;          // atmospheric pressure, Pa
+    const DAT gamma   = 0.028*1e-6;   // exponent factor for permeability function
 
     // Numerics
-    const int nx      = 512;       // number of cells
+    const int nx      = 128;      // number of cells
     const int ny      = nx;
     const DAT dx      = Lx/nx;    // cell size
     const DAT dy      = Ly/ny;
@@ -38,7 +42,7 @@ private:
     const DAT eps_a_h = 1e-6;     // absolute tolerance, flow
     const DAT damp    = 1e1;
 
-    const DAT dt        = 1e5;    // Seconds
+    const DAT dt        = 1e4;    // Seconds
     const DAT Time      = dt*10;
     const DAT nt        = Time / dt;
 
