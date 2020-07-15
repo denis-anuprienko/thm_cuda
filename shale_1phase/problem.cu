@@ -17,7 +17,7 @@ __global__ void kernel_SetIC(DAT *Pf, DAT *qx, DAT *qy, DAT *Kx, DAT *Ky, DAT *p
 
 __global__ void kernel_Compute_Q(DAT *qx, DAT *qy, DAT *Pf, DAT *Kx, DAT *Ky,
                                  const int nx, const int ny, const DAT dx, const DAT dy,
-                                 const DAT rhow, const DAT muw, const DAT g);
+                                 const DAT rhof, const DAT muf, const DAT g);
 __global__ void kernel_Compute_K(DAT *Pf, DAT *Kx, DAT *Ky,
                                  const int nx, const int ny, const DAT K0,
                                  const DAT gamma, const DAT Pt, const DAT P0);
@@ -242,7 +242,7 @@ __global__ void kernel_SetIC(DAT *Pf, DAT *qx, DAT *qy, DAT *Kx, DAT *Ky, DAT *p
 
 __global__ void kernel_Compute_Q(DAT *qx, DAT *qy, DAT *Pf, DAT *Kx, DAT *Ky,
                                  const int nx, const int ny, const DAT dx, const DAT dy,
-                                 const DAT rhow, const DAT muw, const DAT g)
+                                 const DAT rhof, const DAT muf, const DAT g)
 {
     int i = blockDim.x * blockIdx.x + threadIdx.x;
     int j = blockDim.y * blockIdx.y + threadIdx.y;
@@ -252,11 +252,11 @@ __global__ void kernel_Compute_Q(DAT *qx, DAT *qy, DAT *Pf, DAT *Kx, DAT *Ky,
     // 2:nx,:
     // 1:nx-1,:
     if(i > 0 && i < nx && j >= 0 && j <= ny-1){ // Internal fluxes
-        qx[i+j*(nx+1)] = -rhow/muw*Kx[i+j*(nx+1)]*((Pf[i+j*nx] - Pf[i-1+j*nx])/dx);
+        qx[i+j*(nx+1)] = -rhof/muf*Kx[i+j*(nx+1)]*((Pf[i+j*nx] - Pf[i-1+j*nx])/dx);
     }
 
     if(i >= 0 && i <= nx-1 && j > 0 && j < ny){ // Internal fluxes
-        qy[i+j*nx] = -rhow/muw*Ky[i+j*nx]*((Pf[i+j*nx] - Pf[i+(j-1)*nx])/dy + 0*rhow*g);
+        qy[i+j*nx] = -rhof/muf*Ky[i+j*nx]*((Pf[i+j*nx] - Pf[i+(j-1)*nx])/dy + rhof*g);
     }
 
     // Bc at lower side
