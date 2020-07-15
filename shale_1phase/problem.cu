@@ -154,6 +154,8 @@ void Problem::SolveOnGPU()
     Pf      = new DAT[nx*ny];
     qx      = new DAT[(nx+1)*ny];
     qy      = new DAT[nx*(ny+1)];
+    Kx      = new DAT[(nx+1)*ny];
+    Ky      = new DAT[nx*(ny+1)];
     phi     = new DAT[nx*ny];
     rsd_h   = new DAT[nx*ny];
 
@@ -192,6 +194,8 @@ void Problem::SolveOnGPU()
     delete [] Pf;
     delete [] qx;
     delete [] qy;
+    delete [] Kx;
+    delete [] Ky;
     delete [] phi;
     delete [] rsd_h;
 }
@@ -321,6 +325,8 @@ void Problem::SaveVTK_GPU(std::string path)
     cudaMemcpy(Pf, dev_Pf, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToHost);
     cudaMemcpy(qx, dev_qx, sizeof(DAT) * (nx+1)*ny, cudaMemcpyDeviceToHost);
     cudaMemcpy(qy, dev_qy, sizeof(DAT) * nx*(ny+1), cudaMemcpyDeviceToHost);
+    cudaMemcpy(Kx, dev_Kx, sizeof(DAT) * (nx+1)*ny, cudaMemcpyDeviceToHost);
+    cudaMemcpy(Ky, dev_Ky, sizeof(DAT) * nx*(ny+1), cudaMemcpyDeviceToHost);
     cudaMemcpy(phi, dev_phi, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToHost);
 
     SaveVTK(path);
@@ -331,6 +337,8 @@ void Problem::SaveDAT_GPU(int stepnum)
     cudaMemcpy(Pf, dev_Pf, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToHost);
     cudaMemcpy(qx, dev_qx, sizeof(DAT) * (nx+1)*ny, cudaMemcpyDeviceToHost);
     cudaMemcpy(qy, dev_qy, sizeof(DAT) * nx*(ny+1), cudaMemcpyDeviceToHost);
+    cudaMemcpy(Kx, dev_Kx, sizeof(DAT) * (nx+1)*ny, cudaMemcpyDeviceToHost);
+    cudaMemcpy(Ky, dev_Ky, sizeof(DAT) * nx*(ny+1), cudaMemcpyDeviceToHost);
 
     std::string path = "C:\\Users\\Denis\\Documents\\msu_thmc\\MATLAB\\res_gpu\\shale_1phase\\";
     FILE *f;

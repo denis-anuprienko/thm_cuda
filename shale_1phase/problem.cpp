@@ -58,5 +58,13 @@ void Problem::SaveVTK(string path)
         }
     }
 
+    out << "VECTORS Permeability double" << endl;
+    for(int j = 0; j < ny; j++){
+        for(int i = 0; i < nx; i++){
+            out << 0.5*(Kx[i+j*(nx+1)]+Kx[i+1+j*(nx+1)]) << " " <<
+                   0.5*(Ky[i+(j+1)*nx]+Ky[i+j*nx]) << " 0.0" << endl;
+        }
+    }
+
     out.close();
 }
