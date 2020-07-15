@@ -20,24 +20,17 @@
 class Problem
 {
 private:
-    const DAT Lx      = 0.025;      // domain length, m
-    const DAT Ly      = 0.025;
-    const DAT muw     = 1.2e-3;     // water dynamic viscoity, Pa*s
-    const DAT rhow    = 1e3;        // water density, kg/m^3
-    const DAT rho_s   = 1e3;        // solid density, kg/m^3
-    const DAT sstor   = 1e-6;       // specific storage coefficient, 1/m
+    const DAT Lx      = 0.012;      // domain length, m
+    const DAT Ly      = 0.012;
+    const DAT K0      = 1e-18;      // initial intrinsic permeability, m^2
+    const DAT muf     = 1.2e-3;     // fluid dynamic viscoity, Pa*s
+    const DAT rhof    = 1e3;        // fluid density, kg/m^3
+    const DAT rhos    = 1e3;        // solid density, kg/m^3
     const DAT g       = 9.81;       // m/s^2
-    const DAT vg_a    = 1.5;        // van Genuchten pore parameter
-    const DAT vg_n    = 1.35;       // van Genuchten pore parameter
-    const DAT vg_m    = 1. - 1./vg_n;
-    const DAT E       = 3.5e6;      // Young's modulus, MPa
-    const DAT nu      = 0.3;        // Poisson ratio
-    const DAT lam     = E*nu/(1+nu)/(1-2*nu);
-    const DAT mu      = E/2/(1+nu);
 
 
     // Numerics
-    const int nx      = 32;       // number of cells
+    const int nx      = 256;       // number of cells
     const int ny      = nx;
     const DAT dx      = Lx/nx;    // cell size
     const DAT dy      = Ly/ny;
@@ -45,8 +38,8 @@ private:
     const DAT eps_a_h = 1e-6;     // absolute tolerance, flow
     const DAT damp    = 1e1;
 
-    const DAT dt        = 1e-1;    // Seconds
-    const DAT Time      = dt*100;
+    const DAT dt        = 1e5;    // Seconds
+    const DAT Time      = dt*10;
     const DAT nt        = Time / dt;
 
     bool do_mech   = false;
@@ -61,12 +54,14 @@ private:
     DAT *Pf_old;
     DAT *qx, *qy;   // Fluid fluxes
     DAT *Kx, *Ky;   // Pressure-dependent permeabilities
+    DAT *phi;       // Porosity
     DAT *rsd_h;
     // Unknowns on GPU
     DAT *dev_Pf;
     DAT *dev_Pf_old;
     DAT *dev_qx, *dev_qy;
     DAT *dev_Kx, *dev_Ky;
+    DAT *dev_phi;
     DAT *dev_rsd_h;
 
     std::string respath;
@@ -75,10 +70,10 @@ private:
     void H_Substep_GPU();     // Hydro substep
     void M_Substep_GPU();     // Mechanical substep
     void SetIC_GPU();         // Set initial conditions
-    void Compute_Sw_GPU();    // Compute water saturation
     void Compute_K_GPU();     // Compute permeability
-    void Compute_Q_GPU();     // Compute fluid fluxes using Kr
-    void Update_Pf_GPU();     // Compute residual and update water pressure
+    void Compute_Q_GPU();     // Compute fluid fluxes using K
+    void Update_Pf_GPU();     // Compute residual and update fluid pressure
+    void Update_Poro();       // Update porosity based on new fluid pressure values
 
 public:
     Problem(){ Init(); }

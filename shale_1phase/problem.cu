@@ -6,7 +6,7 @@
 using namespace std;
 
 #define BLOCK_DIM 16
-#define dt_h      1e-2
+#define dt_h      1e2
 #define dt_m      1e-6
 
 void FindMax(DAT *dev_arr, DAT *max, int size);
@@ -19,7 +19,7 @@ __global__ void kernel_Compute_Q(DAT *qx, DAT *qy, DAT *Pf, DAT *Kx, DAT *Ky,
                                  const int nx, const int ny, const DAT dx, const DAT dy,
                                  const DAT rhow, const DAT muw, const DAT g);
 __global__ void kernel_Compute_K(DAT *Pf, DAT *Kx, DAT *Ky,
-                                 const int nx, const int ny, const DAT vg_m);
+                                 const int nx, const int ny, const DAT K0);
 
 __global__ void kernel_Update_Pf(DAT *rsd, DAT *Pf, DAT *Pf_old,
                                  DAT *qx, DAT *qy, const int nx, const int ny,
@@ -63,7 +63,7 @@ void Problem::Compute_Q_GPU()
     dim3 dimBlock(BLOCK_DIM, BLOCK_DIM);
     dim3 dimGrid((nx+1+dimBlock.x-1)/dimBlock.x, (ny+1+dimBlock.y-1)/dimBlock.y);
     kernel_Compute_Q<<<dimGrid,dimBlock>>>(dev_qx, dev_qy, dev_Pf, dev_Kx, dev_Ky,
-                                           nx, ny, dx, dy, rhow, muw, g);
+                                           nx, ny, dx, dy, rhof, muf, g);
     cudaError_t err = cudaGetLastError();
     if(err != 0)
         printf("Error %x at Q\n", err);
@@ -74,7 +74,7 @@ void Problem::Compute_K_GPU()
     dim3 dimBlock(BLOCK_DIM, BLOCK_DIM);
     dim3 dimGrid((nx+1+dimBlock.x-1)/dimBlock.x, (ny+1+dimBlock.y-1)/dimBlock.y);
     kernel_Compute_K<<<dimGrid,dimBlock>>>(dev_Pf, dev_Kx, dev_Ky,
-                                           nx, ny, 0.0);
+                                           nx, ny, K0);
     cudaError_t err = cudaGetLastError();
     if(err != 0)
         printf("Error %x at Kr\n", err);
@@ -87,10 +87,31 @@ void Problem::Update_Pf_GPU()
     kernel_Update_Pf<<<dimGrid,dimBlock>>>(dev_rsd_h, dev_Pf, dev_Pf_old,
                                            dev_qx, dev_qy,
                                            nx, ny, dx, dy, dt,
-                                           0.1, rhow, 0.0);
+                                           0.1, rhof, 0.0);
     cudaError_t err = cudaGetLastError();
     if(err != 0)
-        printf("Error %x at Pw\n", err);
+        printf("Error %x at Pf\n", err);
+}
+
+void Problem::H_Substep_GPU()
+{
+    printf("Flow\n");
+    fflush(stdout);
+    for(int nit = 1; nit <= 100000; nit++){
+        Compute_K_GPU();
+        Compute_Q_GPU();
+        Update_Pf_GPU();
+        if(nit%10000 == 0 || nit == 1){
+            DAT err = 13;
+            FindMax(dev_rsd_h, &err, nx*ny);
+            printf("iter %d: r_w = %e\n", nit, err);
+            fflush(stdout);
+            if(err < eps_a_h){
+                printf("Flow converged in %d it.: r_w = %e\n", nit, err);
+                break;
+            }
+        }
+    }
 }
 
 void Problem::SolveOnGPU()
@@ -126,10 +147,9 @@ void Problem::SolveOnGPU()
         if(do_mech)
 ;//            M_Substep_GPU();
         cudaMemcpy(dev_Pf_old, dev_Pf, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToDevice);
-        if(do_flow)
-;//            H_Substep_GPU();
+        H_Substep_GPU();
         string name = respath + "/sol" + to_string(it) + ".vtk";
-        //SaveVTK_GPU(name);
+        SaveVTK_GPU(name);
         //SaveDAT_GPU(it);
     }
 
@@ -168,13 +188,13 @@ __global__ void kernel_SetIC(DAT *Pf, DAT *qx, DAT *qy, DAT *Kx, DAT *Ky, DAT *r
     // Cell variables
     if(i >= 0 && i < nx && j >= 0 && j < ny){
         //if(i*i + j*j < 400)
-//        if(sqrt((Lx/2.0-x)*(Lx/2.0-x) + (Ly/2.0-y)*(Ly/2.0-y)) < 0.001)
-//            Pf[i+j*nx] = 1e3;
-//        else
-//            Pf[i+j*nx] = -1e5;
+        if(sqrt((Lx/2.0-x)*(Lx/2.0-x) + (Ly/2.0-y)*(Ly/2.0-y)) < 0.001)
+            Pf[i+j*nx] = 9e6;
+        else
+            Pf[i+j*nx] = 8e6;
         //DAT rad = (DAT)(i*i + j*j);
         //Pf[i+j*nx] = sqrt(rad);
-        Pf[i+j*nx] = -1e5;
+        //Pf[i+j*nx] = 8e6;
         rsd_h[i+j*nx] = 0.0;
     }
     // Vertical face variables - x-fluxes, for example
@@ -206,12 +226,10 @@ __global__ void kernel_Compute_Q(DAT *qx, DAT *qy, DAT *Pf, DAT *Kx, DAT *Ky,
     // 1:nx-1,:
     if(i > 0 && i < nx && j >= 0 && j <= ny-1){ // Internal fluxes
         qx[i+j*(nx+1)] = -rhow/muw*Kx[i+j*(nx+1)]*((Pf[i+j*nx] - Pf[i-1+j*nx])/dx);
-        //if(i==1 && j==0)
-        //    printf("qx at cell 0 = %lf\n",qx[i+j*(nx+1)]);
     }
 
     if(i >= 0 && i <= nx-1 && j > 0 && j < ny){ // Internal fluxes
-        qy[i+j*nx] = -rhow/muw*Ky[i+j*nx]*((Pf[i+j*nx] - Pf[i+(j-1)*nx])/dy + rhow*g);
+        qy[i+j*nx] = -rhow/muw*Ky[i+j*nx]*((Pf[i+j*nx] - Pf[i+(j-1)*nx])/dy + 0*rhow*g);
     }
 
     // Bc at lower side
@@ -221,17 +239,20 @@ __global__ void kernel_Compute_Q(DAT *qx, DAT *qy, DAT *Pf, DAT *Kx, DAT *Ky,
 }
 
 __global__ void kernel_Compute_K(DAT *Pf, DAT *Kx, DAT *Ky,
-                                 const int nx, const int ny, const DAT vg_m)
+                                 const int nx, const int ny, const DAT K0)
 {
     int i = blockDim.x * blockIdx.x + threadIdx.x;
     int j = blockDim.y * blockIdx.y + threadIdx.y;
 
     if(i > 0 && i < nx && j >= 0 && j <= ny-1){ // Internal faces
-        // todo
+        // Upwind approach
+        DAT Pupw = max(Pf[i+j*nx], Pf[i+1+j*nx]);
+        Kx[i+j*(nx+1)] = K0;
     }
 
     if(i >= 0 && i <= nx-1 && j > 0 && j < ny){ // Internal faces
         // todo
+        Ky[i+j*nx] = K0;
     }
 }
 
@@ -246,7 +267,12 @@ __global__ void kernel_Update_Pf(DAT *rsd, DAT *Pf, DAT *Pf_old,
 
     if(i >= 0 && i < nx && j >= 0 && j < ny){
         int ind = i+nx*j;
-        // todo
+        DAT C_t = 1.0;
+        rsd[ind] = C_t*(Pf[ind]-Pf_old[ind])/dt
+                 + (qx[i+1+j*(nx+1)] - qx[i+j*(nx+1)])/dx
+                 + (qy[i+(j+1)*nx] - qy[i+j*nx])/dy;
+        Pf[ind]  -= dt_h * rsd[ind];
+        rsd[ind] = fabs(rsd[ind]);
     }
 }
 
