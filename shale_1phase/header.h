@@ -23,9 +23,9 @@ private:
     const DAT Lx      = 0.012;      // domain length, m
     const DAT Ly      = 0.012;
     const DAT K0      = 1e-18;      // initial intrinsic permeability, m^2
-    const DAT muf     = 1.2e-3;     // fluid dynamic viscoity, Pa*s
-    const DAT rhof    = 1e3;        // fluid density, kg/m^3
-    const DAT rhos    = 1e3;        // solid density, kg/m^3
+    const DAT muf     = 6.0e-5;     // fluid dynamic viscoity, Pa*s
+    const DAT rhof    = 7.3e2;      // fluid density, kg/m^3
+    const DAT rhos    = 2.0e3;      // solid density, kg/m^3
     const DAT g       = 9.81;       // m/s^2
 
 
