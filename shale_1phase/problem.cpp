@@ -8,7 +8,7 @@ void Problem::Init()
     //cout << "Save files every " << save_intensity << " step" << endl;
     respath = std::experimental::filesystem::current_path().string() + "\\res";
     printf("Init finished\n");
-    printf("c_f = %e, c_pji = %e\n", c_f, c_phi);
+    printf("c_f = %e, c_phi = %e\n", c_f, c_phi);
     fflush(stdout);
 }
 
@@ -26,9 +26,9 @@ void Problem::SaveVTK(string path)
     out << "DIMENSIONS " << nx+1 << " " << ny+1 << " 1" << endl;
     out << "POINTS " << (nx+1)*(ny+1) << " DOUBLE" << endl;
 
-    for(int i = 0; i <= nx; i++){
-        for(int j = 0; j <= ny; j++){
-            out << j*dy << " " << i*dx << " 0.0" << endl;
+    for(int j = 0; j <= ny; j++){
+        for(int i = 0; i <= nx; i++){
+            out << i*dx << " " << j*dy << " 0.0" << endl;
         }
     }
 
