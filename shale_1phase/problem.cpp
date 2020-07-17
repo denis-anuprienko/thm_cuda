@@ -9,6 +9,8 @@ void Problem::Init()
     respath = std::experimental::filesystem::current_path().string() + "\\res";
     printf("Init finished\n");
     printf("c_f = %e, c_phi = %e\n", c_f, c_phi);
+    DAT cfldt = 1.0/K0*muf*dy*dy/4.0;
+    printf("Recommended dt is %e s\n", cfldt);
     fflush(stdout);
 }
 
@@ -42,6 +44,21 @@ void Problem::SaveVTK(string path)
         }
     }
 
+//    out << "SCALARS Fluid_Pressure_Exact double" << endl;
+//    out << "LOOKUP_TABLE default" << endl;
+//    DAT Cerr = 0.0;
+//    for(int j = 0; j < ny; j++){
+//        DAT y = (j+0.5)*dy;
+//        DAT Pex = 8e6 + muf/K0*(Ly-y) * 9.6e-3/60/60/700/0.012;
+//        for(int i = 0; i < nx; i++){
+//            out << Pex << endl;
+//            DAT err = fabs(Pex - Pf[i+j*nx]);
+//            if(err > Cerr)
+//                Cerr = err;
+//        }
+//    }
+//    printf("||err||_C = %e\n", Cerr);
+
     out << "VECTORS FluidFlux double" << endl;
     for(int j = 0; j < ny; j++){
         for(int i = 0; i < nx; i++){
@@ -61,8 +78,8 @@ void Problem::SaveVTK(string path)
     out << "VECTORS Permeability double" << endl;
     for(int j = 0; j < ny; j++){
         for(int i = 0; i < nx; i++){
-            out << 0.5*(Kx[i+j*(nx+1)]+Kx[i+1+j*(nx+1)]) << " " <<
-                   0.5*(Ky[i+(j+1)*nx]+Ky[i+j*nx]) << " 0.0" << endl;
+            out << 0.5*(Kx[i+j*(nx+1)]+Kx[i+1+j*(nx+1)])/K0 << " " <<
+                   0.5*(Ky[i+(j+1)*nx]+Ky[i+j*nx])/K0 << " 0.0" << endl;
         }
     }
 

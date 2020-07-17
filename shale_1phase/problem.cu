@@ -6,14 +6,14 @@
 using namespace std;
 
 #define BLOCK_DIM 16
-#define dt_h      1e2
+#define dt_h      5e5
 #define dt_m      1e-6
 
 void FindMax(DAT *dev_arr, DAT *max, int size);
 
 __global__ void kernel_SetIC(DAT *Pf, DAT *qx, DAT *qy, DAT *Kx, DAT *Ky, DAT *phi,
                              DAT *rsd_h,
-                             const int nx, const int ny, const DAT Lx, const DAT Ly);
+                             const int nx, const int ny, const DAT Lx, const DAT Ly, const DAT K0);
 
 __global__ void kernel_Compute_Q(DAT *qx, DAT *qy, DAT *Pf, DAT *Kx, DAT *Ky,
                                  const int nx, const int ny, const DAT dx, const DAT dy,
@@ -24,11 +24,13 @@ __global__ void kernel_Compute_K(DAT *Pf, DAT *Kx, DAT *Ky,
 
 __global__ void kernel_Update_Pf(DAT *rsd, DAT *Pf, DAT *Pf_old, DAT *phi,
                                  DAT *qx, DAT *qy, const int nx, const int ny,
-                                 const DAT dx, const DAT dy, const DAT dt, const DAT c_f, const DAT c_phi);
+                                 const DAT dx, const DAT dy, const DAT dt, const DAT c_f,
+                                 const DAT c_phi);
 
 __global__ void kernel_Update_Poro(DAT *phi, DAT *Pf, DAT *Pf_old,
                                    const int nx, const int ny,
-                                   const DAT dx, const DAT dy, const DAT dt);
+                                   const DAT dx, const DAT dy, const DAT dt,
+                                   const DAT c_phi);
 
 void FindMax(DAT *dev_arr, DAT *max, int size)
 {
@@ -56,7 +58,7 @@ void Problem::SetIC_GPU()
     //cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
     kernel_SetIC<<<dimGrid,dimBlock>>>(dev_Pf, dev_qx, dev_qy, dev_Kx, dev_Ky,
                                        dev_phi, dev_rsd_h,
-                                       nx, ny, Lx, Ly);
+                                       nx, ny, Lx, Ly, K0);
     cudaError_t err = cudaGetLastError();
     if(err != 0)
         printf("Error %x at SetIC\n", err);
@@ -104,7 +106,8 @@ void Problem::Update_Poro()
     dim3 dimGrid((nx+dimBlock.x-1)/dimBlock.x, (ny+dimBlock.y-1)/dimBlock.y);
     kernel_Update_Poro<<<dimGrid,dimBlock>>>(dev_phi, dev_Pf, dev_Pf_old,
                                              nx, ny,
-                                             dx, dy, dt);
+                                             dx, dy, dt,
+                                             c_phi);
     cudaError_t err = cudaGetLastError();
     if(err != 0)
         printf("Error %x at Poro\n", err);
@@ -114,7 +117,7 @@ void Problem::H_Substep_GPU()
 {
     printf("Flow\n");
     fflush(stdout);
-    for(int nit = 1; nit <= 100000; nit++){
+    for(int nit = 1; nit <= niter; nit++){
         Compute_K_GPU();
         Compute_Q_GPU();
         Update_Pf_GPU();
@@ -123,13 +126,14 @@ void Problem::H_Substep_GPU()
             FindMax(dev_rsd_h, &err, nx*ny);
             printf("iter %d: r_w = %e\n", nit, err);
             fflush(stdout);
-            if(err < eps_a_h){
+            if(err < eps_a_h && nit > 10000){
                 printf("Flow converged in %d it.: r_w = %e\n", nit, err);
                 break;
             }
         }
     }
     Update_Poro();
+    P_upstr.push_back(Pf[0]);
 }
 
 void Problem::SolveOnGPU()
@@ -175,6 +179,15 @@ void Problem::SolveOnGPU()
         //SaveDAT_GPU(it);
     }
 
+    std::string name = respath + "/Pupstr.txt";
+    ofstream outp;
+    outp.open(name);
+    outp << "[";
+    for(int i = 0; i < P_upstr.size(); i++)
+        outp << std::to_string(P_upstr[i]) << "\n";
+    outp << "]";
+    outp.close();
+
     cudaFree(dev_Pf);
     cudaFree(dev_Pf_old);
     cudaFree(dev_qx);
@@ -202,39 +215,37 @@ void Problem::SolveOnGPU()
 
 
 __global__ void kernel_SetIC(DAT *Pf, DAT *qx, DAT *qy, DAT *Kx, DAT *Ky, DAT *phi, DAT *rsd_h,
-                             const int nx, const int ny, const DAT Lx, const DAT Ly)
+                             const int nx, const int ny, const DAT Lx, const DAT Ly, const DAT K0)
 {
     int i = blockDim.x * blockIdx.x + threadIdx.x;
     int j = blockDim.y * blockIdx.y + threadIdx.y;
 
 
-    const DAT dx = Lx/nx, dy = dx;
+    const DAT dx = Lx/nx, dy = Ly/ny;
 
     DAT x = (i+0.5)*dx, y = (j+0.5)*dy;
     // Cell variables
     if(i >= 0 && i < nx && j >= 0 && j < ny){
-        //if(i*i + j*j < 400)
-        if(sqrt((Lx/2.0-x)*(Lx/2.0-x) + (Ly/2.0-y)*(Ly/2.0-y)) < 0.001)
-            Pf[i+j*nx] = 9e6;
-        else
-            Pf[i+j*nx] = 8e6;
-        //DAT rad = (DAT)(i*i + j*j);
-        //Pf[i+j*nx] = sqrt(rad);
-        //Pf[i+j*nx] = 8e6;
+//        if(sqrt((Lx/2.0-x)*(Lx/2.0-x) + (Ly/2.0-y)*(Ly/2.0-y)) < 0.001)
+//            Pf[i+j*nx] = 10e6;
+//        else
+//            Pf[i+j*nx] = 8e6;
+
+        Pf[i+j*nx] = 8e6;
         phi[i+j*nx] = 0.16;
         rsd_h[i+j*nx] = 0.0;
     }
     // Vertical face variables - x-fluxes, for example
-    if(i >= 0 && i <= nx && j >=0 && j < ny){
+    if(i >= 0 && i <= nx && j >= 0 && j < ny){
         int ind = i+j*(nx+1);
         qx[ind] = 0.0;
-        Kx[ind] = 1.0;
+        Kx[ind] = K0;
     }
     // Horizontal face variables - y-fluxes, for example
-    if(i >= 0 && i < nx && j >=0 && j <= ny){
+    if(i >= 0 && i < nx && j >= 0 && j <= ny){
         int ind = i+j*nx;
         qy[ind] = 0.0;
-        Ky[ind] = 1.0;
+        Ky[ind] = K0;
     }
 }
 
@@ -252,16 +263,26 @@ __global__ void kernel_Compute_Q(DAT *qx, DAT *qy, DAT *Pf, DAT *Kx, DAT *Ky,
     // 2:nx,:
     // 1:nx-1,:
     if(i > 0 && i < nx && j >= 0 && j <= ny-1){ // Internal fluxes
-        qx[i+j*(nx+1)] = -rhof/muf*Kx[i+j*(nx+1)]*((Pf[i+j*nx] - Pf[i-1+j*nx])/dx);
+        qx[i+j*(nx+1)] = -1.0/muf*Kx[i+j*(nx+1)]*((Pf[i+j*nx] - Pf[i-1+j*nx])/dx);
     }
 
     if(i >= 0 && i <= nx-1 && j > 0 && j < ny){ // Internal fluxes
-        qy[i+j*nx] = -rhof/muf*Ky[i+j*nx]*((Pf[i+j*nx] - Pf[i+(j-1)*nx])/dy + rhof*g);
+        qy[i+j*nx] = -1.0/muf*Ky[i+j*nx]*((Pf[i+j*nx] - Pf[i+(j-1)*nx])/dy + 0*rhof*g);
     }
 
-    // Bc at lower side
-    if(j == 0){
-        // todo
+    // Bc at upper side
+    if(i >= 0 && i <= nx-1 && j == ny){
+        // todo: include permeability calculation for boundary
+        DAT Pupw = Pf[i+(j-1)*nx];
+        DAT K = 1e-18 * exp(-0.028*1e-6*(43e6-Pupw-1e5));
+        if(Pupw < 11e6)
+            K *= 9e-3;
+        qy[i+j*nx] = -1./muf*K*((8e6 - Pf[i+(j-1)*nx])/dy + 0*rhof*g);
+    }
+
+    if(i >= 0 && i <= nx-1 && j == 0){
+        // todo: include permeability calculation for boundary
+        qy[i+j*nx] = 9.6e-3/60/60/700/0.012;
     }
 }
 
@@ -274,14 +295,19 @@ __global__ void kernel_Compute_K(DAT *Pf, DAT *Kx, DAT *Ky,
 
     if(i > 0 && i < nx && j >= 0 && j <= ny-1){ // Internal faces
         // Upwind approach
-        DAT Pupw = max(Pf[i+j*nx], Pf[i+1+j*nx]);
+        //DAT Pupw = max(Pf[i+j*nx], Pf[i+1+j*nx]);
+        DAT Pupw = 0.5*(Pf[i+j*nx] + Pf[i+1+j*nx]);
         Kx[i+j*(nx+1)] = K0 * exp(-gamma*(Pt-Pupw-P0));
+        if(Pupw < 11e6)
+            Kx[i+j*(nx+1)] *= 9e-3;
     }
 
     if(i >= 0 && i <= nx-1 && j > 0 && j < ny){ // Internal faces
         // Upwind
-        DAT Pupw = max(Pf[i+j*nx], Pf[i+(j+1)*nx]);
+        DAT Pupw = 0.5*(Pf[i+j*nx] + Pf[i+(j+1)*nx]);
         Ky[i+j*nx] = K0 * exp(-gamma*(Pt-Pupw-P0));
+        if(Pupw < 11e6)
+            Ky[i+j*nx] *= 9e-3;
     }
 }
 
@@ -299,7 +325,7 @@ __global__ void kernel_Update_Pf(DAT *rsd, DAT *Pf, DAT *Pf_old, DAT *phi,
         DAT C_t = c_f*phi[ind] + c_phi*phi[ind]/(1.0-phi[ind]);
         rsd[ind] = C_t*(Pf[ind]-Pf_old[ind])/dt
                  + (qx[i+1+j*(nx+1)] - qx[i+j*(nx+1)])/dx
-                 + (qy[i+(j+1)*nx] - qy[i+j*nx])/dy;
+                 + (qy[i+(j+1)*nx]   - qy[i+j*nx])/dy;
         Pf[ind]  -= dt_h * rsd[ind];
         rsd[ind] = fabs(rsd[ind]);
     }
@@ -307,14 +333,19 @@ __global__ void kernel_Update_Pf(DAT *rsd, DAT *Pf, DAT *Pf_old, DAT *phi,
 
 __global__ void kernel_Update_Poro(DAT *phi, DAT *Pf, DAT *Pf_old,
                                    const int nx, const int ny,
-                                   const DAT dx, const DAT dy, const DAT dt)
+                                   const DAT dx, const DAT dy, const DAT dt,
+                                   const DAT c_phi)
 {
     int i = blockDim.x * blockIdx.x + threadIdx.x;
     int j = blockDim.y * blockIdx.y + threadIdx.y;
 
     if(i >= 0 && i < nx && j >= 0 && j < ny){
         int ind = i+nx*j;
-        phi[ind] += 1e-6*phi[ind]*(Pf[ind] - Pf_old[ind]);
+        // Explicit update
+        //phi[ind] += 1e-6*phi[ind]*(Pf[ind] - Pf_old[ind]);
+
+        // Implicit update
+        phi[ind] /= (1.0 - c_phi*(Pf[ind] - Pf_old[ind]));
     }
 }
 
