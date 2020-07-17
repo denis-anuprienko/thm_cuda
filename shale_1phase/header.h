@@ -7,6 +7,7 @@
 #include <string>
 #include <cmath>
 #include <ctime>
+#include <vector>
 
 #define DAT double
 
@@ -23,26 +24,25 @@ private:
     const DAT Lx      = 0.012;        // domain length, m
     const DAT Ly      = 0.012;
     const DAT K0      = 1e-18;        // initial intrinsic permeability, m^2
-    const DAT muf     = 6.0e-5;       // fluid dynamic viscoity, Pa*s
-    const DAT rhof    = 7.3e2;        // fluid density, kg/m^3
+    const DAT muf     = 1.0e-3;       // fluid dynamic viscoity, Pa*s
+    const DAT rhof    = 7.0e2;        // fluid density, kg/m^3
     const DAT rhos    = 2.0e3;        // solid density, kg/m^3
     const DAT g       = 9.81;         // m/s^2
-    const DAT c_f     = 1e0;//4.5e-4/(1e6); // parameter from van Noort and Yarushina, 1/Pa
-    const DAT c_phi   = 1e0;//12e-3/(1e6);  // parameter from van Noort and Yarushina, 1/Pa
-    const DAT Pt      = 4.3e7;        // confining pressure, Pa
+    const DAT c_f     = 4.5e-4*1e-6; // parameter from van Noort and Yarushina, 1/Pa
+    const DAT c_phi   = 12e-3*1e-6;  // parameter from van Noort and Yarushina, 1/Pa
+    const DAT Pt      = 43e6;         // confining pressure, Pa
     const DAT P0      = 1e5;          // atmospheric pressure, Pa
     const DAT gamma   = 0.028*1e-6;   // exponent factor for permeability function
 
     // Numerics
-    const int nx      = 128;      // number of cells
-    const int ny      = nx;
+    const int nx      = 1;      // number of cells
+    const int ny      = 128;
     const DAT dx      = Lx/nx;    // cell size
     const DAT dy      = Ly/ny;
-    const DAT niter   = 1e5;      // number of PT steps
-    const DAT eps_a_h = 1e-6;     // absolute tolerance, flow
-    const DAT damp    = 1e1;
+    const DAT niter   = 20e5;      // number of PT steps
+    const DAT eps_a_h = 1e-8;     // absolute tolerance, flow
 
-    const DAT dt        = 1e4;    // Seconds
+    const DAT dt        = 1e3;    // Seconds
     const DAT Time      = dt*10;
     const DAT nt        = Time / dt;
 
@@ -60,6 +60,7 @@ private:
     DAT *Kx, *Ky;   // Pressure-dependent permeabilities
     DAT *phi;       // Porosity
     DAT *rsd_h;
+    std::vector<DAT> P_upstr;
     // Unknowns on GPU
     DAT *dev_Pf;
     DAT *dev_Pf_old;
