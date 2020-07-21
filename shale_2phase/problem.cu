@@ -20,6 +20,11 @@ __global__ void kernel_SetIC(DAT *Pl, DAT *Pg, DAT *Sl,
                              const DAT K0,
                              const int nx, const int ny, const DAT Lx, const DAT Ly);
 
+__global__ void kernel_Compute_S(DAT *Pl, DAT *Pg, DAT *Sl,
+                                 const DAT rhol, const DAT g,
+                                 const DAT vg_a, const DAT vg_n, const DAT vg_m,
+                                 const int nx, const int ny);
+
 __global__ void kernel_Compute_Q();
 
 __global__ void kernel_Compute_K();
@@ -63,6 +68,8 @@ void Problem::SetIC_GPU()
     cudaError_t err = cudaGetLastError();
     if(err != 0)
         printf("Error %x at SetIC\n", err);
+
+    Compute_S_GPU();
 }
 
 
@@ -96,6 +103,14 @@ void Problem::Compute_S_GPU()
 {
     dim3 dimBlock(BLOCK_DIM, BLOCK_DIM);
     dim3 dimGrid((nx+1+dimBlock.x-1)/dimBlock.x, (ny+1+dimBlock.y-1)/dimBlock.y);
+
+    kernel_Compute_S<<<dimGrid,dimBlock>>>(dev_Pl, dev_Pg, dev_Sl,
+                                           rhol, g,
+                                           vg_a, vg_n, vg_m,
+                                           nx, ny);
+    cudaError_t err = cudaGetLastError();
+    if(err != 0)
+        printf("Error %x at S\n", err);
 }
 
 void Problem::Update_P_GPU()
@@ -178,6 +193,7 @@ void Problem::SolveOnGPU()
 
     // Still needed for VTK saving
     Pl      = new DAT[nx*ny];
+    Sl      = new DAT[nx*ny];
     qlx      = new DAT[(nx+1)*ny];
     qly      = new DAT[nx*(ny+1)];
     Kx      = new DAT[(nx+1)*ny];
@@ -230,6 +246,7 @@ void Problem::SolveOnGPU()
     printf("\nComputation time = %f s\n", comptime/1e3);
 
     delete [] Pl;
+    delete [] Sl;
     delete [] qlx;
     delete [] qly;
     delete [] Kx;
@@ -288,6 +305,24 @@ __global__ void kernel_SetIC(DAT *Pl, DAT *Pg, DAT *Sl,
     }
 }
 
+__global__ void kernel_Compute_S(DAT *Pl, DAT *Pg, DAT *Sl,
+                                 const DAT rhol, const DAT g,
+                                 const DAT vg_a, const DAT vg_n, const DAT vg_m,
+                                 const int nx, const int ny)
+{
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    int j = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if(i >= 0 && i < nx && j >= 0 && j < ny){
+        // Pl = Pg - Pc
+        DAT Pc = Pg[i+j*nx] - Pl[i+j*nx];
+        if(Pc >= 0.0)
+            Sl[i+j*nx] = 1.0;
+        else{
+            Sl[i+j*nx] = pow(1.0 + pow(-vg_a/rhol/g*Pc, vg_n), -vg_m);
+        }
+    }
+}
 
 
 __global__ void kernel_Compute_Q()
@@ -315,6 +350,7 @@ void Problem::SaveVTK_GPU(std::string path)
     // Copy data from device and perform standard SaveVTK
 
     cudaMemcpy(Pl,  dev_Pl, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToHost);
+    cudaMemcpy(Sl,  dev_Sl, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToHost);
     cudaMemcpy(qlx, dev_qlx, sizeof(DAT) * (nx+1)*ny, cudaMemcpyDeviceToHost);
     cudaMemcpy(qly, dev_qly, sizeof(DAT) * nx*(ny+1), cudaMemcpyDeviceToHost);
     cudaMemcpy(Kx,  dev_Kx, sizeof(DAT) * (nx+1)*ny, cudaMemcpyDeviceToHost);

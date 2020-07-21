@@ -36,6 +36,11 @@ private:
     const DAT P0      = 1e5;          // atmospheric pressure, Pa
     const DAT gamma   = 0.028*1e-6;   // exponent factor for permeability function
 
+    const DAT vg_a    = 0.37;         // van Genuchten pore parameter
+    const DAT vg_n    = 3.3;          // van Genuchten pore parameter
+    const DAT vg_m    = 1 - 1/vg_n;
+
+
     // Numerics
     const int nx      = 32;      // number of cells
     const int ny      = 32;

@@ -41,6 +41,15 @@ void Problem::SaveVTK(string path)
             out << Pl[i+j*nx] << endl;
         }
     }
+
+    out << "SCALARS Liquid_Saturation double" << endl;
+    out << "LOOKUP_TABLE default" << endl;
+    for(int j = 0; j < ny; j++){
+        for(int i = 0; i < nx; i++){
+            out << Sl[i+j*nx] << endl;
+        }
+    }
+
     out << "SCALARS Porosity double" << endl;
     out << "LOOKUP_TABLE default" << endl;
     for(int j = 0; j < ny; j++){
