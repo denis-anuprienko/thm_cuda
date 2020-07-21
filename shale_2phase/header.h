@@ -42,14 +42,14 @@ private:
 
 
     // Numerics
-    const int nx      = 32;      // number of cells
-    const int ny      = 32;
+    const int nx      = 64;      // number of cells
+    const int ny      = 64;
     const DAT dx      = Lx/nx;    // cell size
     const DAT dy      = Ly/ny;
-    const DAT niter   = 2e5;      // number of PT steps
+    const DAT niter   = 1e5;      // number of PT steps
     const DAT eps_a_h = 1e-10;     // absolute tolerance, flow
 
-    const DAT dt        = 220*60/1e2;    // Seconds
+    const DAT dt        = 1e3;    // Seconds
     const DAT Time      = dt*100;
     const DAT nt        = Time / dt;
 

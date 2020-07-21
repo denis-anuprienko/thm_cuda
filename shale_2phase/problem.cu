@@ -6,7 +6,7 @@
 using namespace std;
 
 #define BLOCK_DIM 16
-#define dt_h      5e7
+#define dt_h      1e3
 #define dt_m      1e-6
 
 void FindMax(DAT *dev_arr, DAT *max, int size);
@@ -32,9 +32,24 @@ __global__ void kernel_Compute_Kr(DAT *Sl,
                                   DAT *Krlx, DAT *Krly, DAT *Krgx, DAT *Krgy,
                                   const int nx, const int ny);
 
-__global__ void kernel_Compute_Q();
+__global__ void kernel_Compute_Q(DAT *Pl, DAT *Pg,
+                                 DAT *Kx, DAT *Ky,
+                                 DAT *Krlx, DAT *Krly, DAT *Krgx, DAT *Krgy,
+                                 DAT *qlx, DAT *qly, DAT *qgx, DAT *qgy,
+                                 const DAT rhol, const DAT rhog,
+                                 const DAT mul, const DAT mug,
+                                 const DAT g,
+                                 const int nx, const int ny,
+                                 const DAT dx, const DAT dy);
 
-__global__ void kernel_Update_P();
+__global__ void kernel_Update_P(DAT *Pl, DAT *Pg,
+                                DAT *Sl, DAT *Sl_old,
+                                DAT *qlx, DAT *qly, DAT *qgx, DAT *qgy,
+                                DAT *phi,
+                                DAT *rsd_l, DAT *rsd_g,
+                                const DAT rhol, const DAT rhog,
+                                const int nx, const int ny,
+                                const DAT dx, const DAT dy, const DAT dt);
 
 __global__ void kernel_Update_Poro();
 
@@ -82,7 +97,14 @@ void Problem::Compute_Q_GPU()
 {
     dim3 dimBlock(BLOCK_DIM, BLOCK_DIM);
     dim3 dimGrid((nx+1+dimBlock.x-1)/dimBlock.x, (ny+1+dimBlock.y-1)/dimBlock.y);
-    kernel_Compute_Q<<<dimGrid,dimBlock>>>();
+    kernel_Compute_Q<<<dimGrid,dimBlock>>>(dev_Pl, dev_Pg,
+                                           dev_Kx, dev_Ky,
+                                           dev_Krlx, dev_Krly, dev_Krgx, dev_Krgy,
+                                           dev_qlx, dev_qly, dev_qgx, dev_qgy,
+                                           rhol, rhog,
+                                           mul, mug,
+                                           g,
+                                           nx, ny, dx, dy);
     cudaError_t err = cudaGetLastError();
     if(err != 0)
         printf("Error %x at Q\n", err);
@@ -129,7 +151,13 @@ void Problem::Update_P_GPU()
 {
     dim3 dimBlock(BLOCK_DIM, BLOCK_DIM);
     dim3 dimGrid((nx+dimBlock.x-1)/dimBlock.x, (ny+dimBlock.y-1)/dimBlock.y);
-    kernel_Update_P<<<dimGrid,dimBlock>>>();
+    kernel_Update_P<<<dimGrid,dimBlock>>>(dev_Pl, dev_Pg,
+                                          dev_Sl, dev_Sl_old,
+                                          dev_qlx, dev_qly, dev_qgx, dev_qgy,
+                                          dev_phi,
+                                          dev_rsd_l, dev_rsd_g,
+                                          rhol, rhog,
+                                          nx, ny, dx, dy, dt);
     cudaError_t err = cudaGetLastError();
     if(err != 0)
         printf("Error %x at Pf\n", err);
@@ -205,6 +233,7 @@ void Problem::SolveOnGPU()
 
     // Still needed for VTK saving
     Pl      = new DAT[nx*ny];
+    Pg      = new DAT[nx*ny];
     Sl      = new DAT[nx*ny];
     qlx      = new DAT[(nx+1)*ny];
     qly      = new DAT[nx*(ny+1)];
@@ -258,6 +287,7 @@ void Problem::SolveOnGPU()
     printf("\nComputation time = %f s\n", comptime/1e3);
 
     delete [] Pl;
+    delete [] Pg;
     delete [] Sl;
     delete [] qlx;
     delete [] qly;
@@ -292,7 +322,7 @@ __global__ void kernel_SetIC(DAT *Pl, DAT *Pg, DAT *Sl,
         else
             Pl[i+j*nx] = 8e6;
 
-        Pg[i+j*nx] = 8e6;
+        Pg[i+j*nx] = 10e6;
         phi[i+j*nx] = 0.16;
         rsd_l[i+j*nx] = 0.0;
         rsd_g[i+j*nx] = 0.0;
@@ -300,18 +330,18 @@ __global__ void kernel_SetIC(DAT *Pl, DAT *Pg, DAT *Sl,
     // Vertical face variables - x-fluxes, for example
     if(i >= 0 && i <= nx && j >= 0 && j < ny){
         int ind = i+j*(nx+1);
-        qlx[ind] = 0.0;
-        qgx[ind] = 0.0;
-        Kx[ind] = K0;
+        qlx[ind]  = 0.0;
+        qgx[ind]  = 0.0;
+        Kx[ind]   = K0;
         Krlx[ind] = 1.0;
         Krgx[ind] = 1.0;
     }
     // Horizontal face variables - y-fluxes, for example
     if(i >= 0 && i < nx && j >= 0 && j <= ny){
         int ind = i+j*nx;
-        qly[ind] = 0.0;
-        qgy[ind] = 0.0;
-        Ky[ind] = K0;
+        qly[ind]  = 0.0;
+        qgy[ind]  = 0.0;
+        Ky[ind]   = K0;
         Krly[ind] = 1.0;
         Krgy[ind] = 1.0;
     }
@@ -327,11 +357,12 @@ __global__ void kernel_Compute_S(DAT *Pl, DAT *Pg, DAT *Sl,
 
     if(i >= 0 && i < nx && j >= 0 && j < ny){
         // Pl = Pg - Pc
+        // Pc = Pg - Pl
         DAT Pc = Pg[i+j*nx] - Pl[i+j*nx];
-        if(Pc >= 0.0)
+        if(Pc <= 0.0)
             Sl[i+j*nx] = 1.0;
         else{
-            Sl[i+j*nx] = pow(1.0 + pow(-vg_a/rhol/g*Pc, vg_n), -vg_m);
+            Sl[i+j*nx] = pow(1.0 + pow(vg_a/rhol/g*Pc, vg_n), -vg_m);
         }
     }
 }
@@ -361,9 +392,30 @@ __global__ void kernel_Compute_Kr(DAT *Sl,
 }
 
 
-__global__ void kernel_Compute_Q()
+__global__ void kernel_Compute_Q(DAT *Pl, DAT *Pg,
+                                 DAT *Kx, DAT *Ky,
+                                 DAT *Krlx, DAT *Krly, DAT *Krgx, DAT *Krgy,
+                                 DAT *qlx, DAT *qly, DAT *qgx, DAT *qgy,
+                                 const DAT rhol, const DAT rhog,
+                                 const DAT mul, const DAT mug,
+                                 const DAT g,
+                                 const int nx, const int ny,
+                                 const DAT dx, const DAT dy)
 {
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    int j = blockDim.y * blockIdx.y + threadIdx.y;
 
+    if(i > 0 && i < nx && j >= 0 && j <= ny-1){ // Internal fluxes
+        int ind = i+j*(nx+1);
+        qlx[ind] = -rhol*Kx[ind]/mul*Krlx[ind]*((Pl[i+j*nx]-Pl[i-1+j*nx])/dx);
+        qgx[ind] = -rhog*Kx[ind]/mug*Krgx[ind]*((Pg[i+j*nx]-Pg[i-1+j*nx])/dx);
+    }
+
+    if(i >= 0 && i <= nx-1 && j > 0 && j < ny){ // Internal fluxes
+        int ind = i+j*nx;
+        qly[ind] = -rhol*Ky[ind]/mul*Krly[ind]*((Pl[i+j*nx]-Pl[i+(j-1)*nx])/dy + 0*rhol*g);
+        qgy[ind] = -rhog*Ky[ind]/mug*Krgy[ind]*((Pg[i+j*nx]-Pg[i+(j-1)*nx])/dy + 0*rhog*g);
+    }
 }
 
 __global__ void kernel_Compute_K()
@@ -371,9 +423,35 @@ __global__ void kernel_Compute_K()
 
 }
 
-__global__ void kernel_Update_P()
+__global__ void kernel_Update_P(DAT *Pl, DAT *Pg,
+                                DAT *Sl, DAT *Sl_old,
+                                DAT *qlx, DAT *qly, DAT *qgx, DAT *qgy,
+                                DAT *phi,
+                                DAT *rsd_l, DAT *rsd_g,
+                                const DAT rhol, const DAT rhog,
+                                const int nx, const int ny,
+                                const DAT dx, const DAT dy, const DAT dt)
 {
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    int j = blockDim.y * blockIdx.y + threadIdx.y;
 
+    if(i >= 0 && i < nx && j >= 0 && j < ny){
+        int ind = i+nx*j;
+
+        rsd_l[ind] = phi[ind]*rhol * (Sl[ind] - Sl_old[ind])/dt
+                 + (qlx[i+1+j*(nx+1)] - qlx[i+j*(nx+1)])/dx
+                 + (qly[i+(j+1)*nx]   - qly[i+j*nx])/dy;
+
+        rsd_g[ind] = -phi[ind]*rhog * (Sl[ind] - Sl_old[ind])/dt
+                 + (qgx[i+1+j*(nx+1)] - qgx[i+j*(nx+1)])/dx
+                 + (qgy[i+(j+1)*nx]   - qgy[i+j*nx])/dy;
+
+        Pl[ind]  -= rsd_l[ind] * dt_h;
+        Pg[ind]  -= rsd_g[ind] * dt_h;
+
+        rsd_l[ind] = fabs(rsd_l[ind]);
+        rsd_g[ind] = fabs(rsd_g[ind]);
+    }
 }
 
 __global__ void kernel_Update_Poro()
@@ -386,6 +464,7 @@ void Problem::SaveVTK_GPU(std::string path)
     // Copy data from device and perform standard SaveVTK
 
     cudaMemcpy(Pl,  dev_Pl, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToHost);
+    cudaMemcpy(Pg,  dev_Pg, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToHost);
     cudaMemcpy(Sl,  dev_Sl, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToHost);
     cudaMemcpy(qlx, dev_qlx, sizeof(DAT) * (nx+1)*ny, cudaMemcpyDeviceToHost);
     cudaMemcpy(qly, dev_qly, sizeof(DAT) * nx*(ny+1), cudaMemcpyDeviceToHost);
