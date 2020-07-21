@@ -37,7 +37,7 @@ private:
     const DAT gamma   = 0.028*1e-6;   // exponent factor for permeability function
 
     // Numerics
-    const int nx      = 1;      // number of cells
+    const int nx      = 32;      // number of cells
     const int ny      = 32;
     const DAT dx      = Lx/nx;    // cell size
     const DAT dy      = Ly/ny;

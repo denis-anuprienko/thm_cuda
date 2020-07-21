@@ -9,11 +9,16 @@ using namespace std;
 #define dt_h      5e7
 #define dt_m      1e-6
 
-int STEP;
-
 void FindMax(DAT *dev_arr, DAT *max, int size);
 
-__global__ void kernel_SetIC();
+__global__ void kernel_SetIC(DAT *Pl, DAT *Pg, DAT *Sl,
+                             DAT *Kx, DAT *Ky,
+                             DAT *Krlx, DAT *Krly, DAT *Krgx, DAT *Krgy,
+                             DAT *qlx, DAT *qly, DAT *qgx, DAT *qgy,
+                             DAT *phi,
+                             DAT *rsd_l, DAT *rsd_g,
+                             const DAT K0,
+                             const int nx, const int ny, const DAT Lx, const DAT Ly);
 
 __global__ void kernel_Compute_Q();
 
@@ -47,7 +52,14 @@ void Problem::SetIC_GPU()
     dim3 dimGrid((nx+dimBlock.x-1)/dimBlock.x, (ny+dimBlock.y-1)/dimBlock.y);
     printf("Launching %dx%d blocks of %dx%d threads\n", (nx+1+dimBlock.x-1)/dimBlock.x,
            (ny+1+dimBlock.y-1)/dimBlock.y, BLOCK_DIM, BLOCK_DIM);
-    //kernel_SetIC<<<dimGrid,dimBlock>>>();
+    kernel_SetIC<<<dimGrid,dimBlock>>>(dev_Pl, dev_Pg, dev_Sl,
+                                       dev_Kx, dev_Ky,
+                                       dev_Krlx, dev_Krly, dev_Krgx, dev_Krgy,
+                                       dev_qlx, dev_qly, dev_qgx, dev_qgy,
+                                       dev_phi,
+                                       dev_rsd_l, dev_rsd_l,
+                                       K0,
+                                       nx, ny, Lx, Ly);
     cudaError_t err = cudaGetLastError();
     if(err != 0)
         printf("Error %x at SetIC\n", err);
@@ -112,7 +124,6 @@ void Problem::H_Substep_GPU()
     fflush(stdout);
     DAT err_l = 1, err_g = 1, err_l_old, err_g_old;
     for(int nit = 1; nit <= niter; nit++){
-        //if(STEP < 75)
         Compute_K_GPU();
         Compute_S_GPU();
         Compute_Kr_GPU();
@@ -179,7 +190,6 @@ void Problem::SolveOnGPU()
     SaveVTK_GPU(respath + "/sol0.vtk");
 
     for(int it = 1; it <= nt; it++){
-        STEP = it;
         printf("\n\n =======  TIME STEP %d, T = %lf s =======\n", it, it*dt);
         if(do_mech)
 ;//            M_Substep_GPU();
@@ -228,9 +238,54 @@ void Problem::SolveOnGPU()
 }
 
 
-__global__ void kernel_SetIC()
+__global__ void kernel_SetIC(DAT *Pl, DAT *Pg, DAT *Sl,
+                             DAT *Kx, DAT *Ky,
+                             DAT *Krlx, DAT *Krly, DAT *Krgx, DAT *Krgy,
+                             DAT *qlx, DAT *qly, DAT *qgx, DAT *qgy,
+                             DAT *phi,
+                             DAT *rsd_l, DAT *rsd_g,
+                             const DAT K0,
+                             const int nx, const int ny,
+                             const DAT Lx, const DAT Ly
+                             )
 {
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    int j = blockDim.y * blockIdx.y + threadIdx.y;
 
+
+    const DAT dx = Lx/nx, dy = Ly/ny;
+
+    DAT x = (i+0.5)*dx, y = (j+0.5)*dy;
+    // Cell variables
+    if(i >= 0 && i < nx && j >= 0 && j < ny){
+        if(sqrt((Lx/2.0-x)*(Lx/2.0-x) + (Ly/2.0-y)*(Ly/2.0-y)) < 0.001)
+            Pl[i+j*nx] = 10e6;
+        else
+            Pl[i+j*nx] = 8e6;
+
+        Pg[i+j*nx] = 8e6;
+        phi[i+j*nx] = 0.16;
+        rsd_l[i+j*nx] = 0.0;
+        rsd_g[i+j*nx] = 0.0;
+    }
+    // Vertical face variables - x-fluxes, for example
+    if(i >= 0 && i <= nx && j >= 0 && j < ny){
+        int ind = i+j*(nx+1);
+        qlx[ind] = 0.0;
+        qgx[ind] = 0.0;
+        Kx[ind] = K0;
+        Krlx[ind] = 1.0;
+        Krgx[ind] = 1.0;
+    }
+    // Horizontal face variables - y-fluxes, for example
+    if(i >= 0 && i < nx && j >= 0 && j <= ny){
+        int ind = i+j*nx;
+        qly[ind] = 0.0;
+        qgy[ind] = 0.0;
+        Ky[ind] = K0;
+        Krly[ind] = 1.0;
+        Krgy[ind] = 1.0;
+    }
 }
 
 
