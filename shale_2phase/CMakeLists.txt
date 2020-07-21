@@ -14,4 +14,4 @@ set(CMAKE_CXX_FLAGS  "-O3")
 
 add_executable(${PROJECT_NAME} ${SOURCES})
 
-target_link_libraries(${PROJECT_NAME})
+#target_link_libraries(${PROJECT_NAME})

@@ -21,13 +21,15 @@
 class Problem
 {
 private:
-    const DAT Lx      = 0.012;        // domain length, m
+    const DAT Lx      = 0.012;        // Domain length, m
     const DAT Ly      = 0.012;
-    const DAT K0      = 1e-18;        // initial intrinsic permeability, m^2
-    const DAT muf     = 1.0e-3;       // fluid dynamic viscoity, Pa*s
-    const DAT rhof    = 7.0e2;        // fluid density, kg/m^3
-    const DAT rhos    = 2.0e3;        // solid density, kg/m^3
-    const DAT g       = 10.0;         // m/s^2
+    const DAT K0      = 1e-18;        // Initial intrinsic permeability, m^2
+    const DAT mul     = 1.0e-3;       // Liquid dynamic viscoity, Pa*s
+    const DAT mug     = 1.0e-3;       // Gas    dynamic viscoity, Pa*s
+    const DAT rhol    = 7.0e2;        // Liquid density, kg/m^3
+    const DAT rhog    = 7.0e2;        // Gas    density, kg/m^3
+    const DAT rhos    = 2.0e3;        // Solid density, kg/m^3
+    const DAT g       = 9.81;         // m/s^2
     const DAT c_f     = 1./22e9;//4.5e-4*1e-6; // parameter from van Noort and Yarushina, 1/Pa
     const DAT c_phi   = 9e-3*1e-6;  // parameter from van Noort and Yarushina, 1/Pa
     const DAT Pt      = 43e6;         // confining pressure, Pa
@@ -54,25 +56,36 @@ private:
     int save_intensity;
 
     // Unknowns
-    DAT *Pf;        // Fluid pressure
-    DAT *Pf_old;
-    DAT *qx, *qy;   // Fluid fluxes
-    DAT *Kx, *Ky;   // Pressure-dependent permeabilities
-    DAT *phi;       // Porosity
-    DAT *rsd_h;
-    char *indp_y;
-    char *indp_x;
-    std::vector<DAT> P_upstr; // Upstream pressure at all moments
-    std::vector<DAT> q_dnstr; // Downstream flux at all moments
+    DAT *Pl;          // Liquid pressure
+    DAT *Pg;          // Gas    pressure
+    DAT *Sl;          // Liquid saturation, which also defines gas saturation as 1-Sl
+    DAT *Pl_old;
+    DAT *Pg_old;
+    DAT *Sg_old;
+    DAT *Krlx, *Krly; // Liquid relative permeabilities
+    DAT *Krgx, *Krgy; // Gas    relative permeabilities
+    DAT *qlx, *qly;   // Liquid fluxes
+    DAT *qgx, *qgy;   // Gas    fluxes
+    DAT *Kx, *Ky;     // Pressure-dependent intrinsic permeabilities
+    DAT *phi;         // Porosity
+    DAT *rsd_l;       // Residual of equation for liquid
+    DAT *rsd_g;       // Residual of equation for gas
+
     // Unknowns on GPU
-    DAT *dev_Pf;
-    DAT *dev_Pf_old;
-    DAT *dev_qx, *dev_qy;
+    DAT *dev_Pl;
+    DAT *dev_Pg;
+    DAT *dev_Sl;
+    DAT *dev_Pl_old;
+    DAT *dev_Pg_old;
+    DAT *dev_Sl_old;
+    DAT *dev_Krlx, *dev_Krly;
+    DAT *dev_Krgx, *dev_Krgy;
+    DAT *dev_qlx, *dev_qly;
+    DAT *dev_qgx, *dev_qgy;
     DAT *dev_Kx, *dev_Ky;
     DAT *dev_phi;
-    DAT *dev_rsd_h;
-    char *dev_indp_x;
-    char *dev_indp_y;
+    DAT *dev_rsd_l;
+    DAT *dev_rsd_g;
 
     std::string respath;
 
@@ -80,9 +93,11 @@ private:
     void H_Substep_GPU();     // Hydro substep
     void M_Substep_GPU();     // Mechanical substep
     void SetIC_GPU();         // Set initial conditions
-    void Compute_K_GPU();     // Compute permeability
+    void Compute_K_GPU();     // Compute intrinsic permeability
+    void Compute_Kr_GPU();    // Compute relative  permeability
+    void Compute_S_GPU();     // Compute liquid saturation (no calculation for gas needed)
     void Compute_Q_GPU();     // Compute fluid fluxes using K
-    void Update_Pf_GPU();     // Compute residual and update fluid pressure
+    void Update_P_GPU();      // Update pressure and compute residuals
     void Update_Poro();       // Update porosity based on new fluid pressure values
 
 public:
