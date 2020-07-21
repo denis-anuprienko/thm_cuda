@@ -526,7 +526,7 @@ __global__ void kernel_Compute_Sw(DAT *Pw, DAT *Sw,
     int j = blockDim.y * blockIdx.y + threadIdx.y;
 
     if(i >= 0 && i < nx && j >= 0 && j < ny){
-        if(Pw[i+j*nx] <= 0.0)
+        if(Pw[i+j*nx] >= 0.0)
             Sw[i+j*nx] = 1.0;
         else{
             Sw[i+j*nx] = pow(1.0 + pow(-vg_a/rhow/g*Pw[i+j*nx], vg_n), -vg_m);

@@ -20,14 +20,19 @@ __global__ void kernel_SetIC(DAT *Pl, DAT *Pg, DAT *Sl,
                              const DAT K0,
                              const int nx, const int ny, const DAT Lx, const DAT Ly);
 
+
+__global__ void kernel_Compute_K();
+
 __global__ void kernel_Compute_S(DAT *Pl, DAT *Pg, DAT *Sl,
                                  const DAT rhol, const DAT g,
                                  const DAT vg_a, const DAT vg_n, const DAT vg_m,
                                  const int nx, const int ny);
 
-__global__ void kernel_Compute_Q();
+__global__ void kernel_Compute_Kr(DAT *Sl,
+                                  DAT *Krlx, DAT *Krly, DAT *Krgx, DAT *Krgy,
+                                  const int nx, const int ny);
 
-__global__ void kernel_Compute_K();
+__global__ void kernel_Compute_Q();
 
 __global__ void kernel_Update_P();
 
@@ -93,20 +98,27 @@ void Problem::Compute_K_GPU()
         printf("Error %x at K\n", err);
 }
 
-void Problem::Compute_Kr_GPU()
-{
-    dim3 dimBlock(BLOCK_DIM, BLOCK_DIM);
-    dim3 dimGrid((nx+1+dimBlock.x-1)/dimBlock.x, (ny+1+dimBlock.y-1)/dimBlock.y);
-}
-
 void Problem::Compute_S_GPU()
 {
     dim3 dimBlock(BLOCK_DIM, BLOCK_DIM);
-    dim3 dimGrid((nx+1+dimBlock.x-1)/dimBlock.x, (ny+1+dimBlock.y-1)/dimBlock.y);
+    dim3 dimGrid((nx+dimBlock.x-1)/dimBlock.x, (ny+dimBlock.y-1)/dimBlock.y);
 
     kernel_Compute_S<<<dimGrid,dimBlock>>>(dev_Pl, dev_Pg, dev_Sl,
                                            rhol, g,
                                            vg_a, vg_n, vg_m,
+                                           nx, ny);
+    cudaError_t err = cudaGetLastError();
+    if(err != 0)
+        printf("Error %x at S\n", err);
+}
+
+void Problem::Compute_Kr_GPU()
+{
+    dim3 dimBlock(BLOCK_DIM, BLOCK_DIM);
+    dim3 dimGrid((nx+1+dimBlock.x-1)/dimBlock.x, (ny+1+dimBlock.y-1)/dimBlock.y);
+
+    kernel_Compute_Kr<<<dimGrid,dimBlock>>>(dev_Sl,
+                                           dev_Krlx, dev_Krly, dev_Krgx, dev_Krgy,
                                            nx, ny);
     cudaError_t err = cudaGetLastError();
     if(err != 0)
@@ -321,6 +333,30 @@ __global__ void kernel_Compute_S(DAT *Pl, DAT *Pg, DAT *Sl,
         else{
             Sl[i+j*nx] = pow(1.0 + pow(-vg_a/rhol/g*Pc, vg_n), -vg_m);
         }
+    }
+}
+
+__global__ void kernel_Compute_Kr(DAT *Sl,
+                                  DAT *Krlx, DAT *Krly, DAT *Krgx, DAT *Krgy,
+                                  const int nx, const int ny)
+{
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    int j = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if(i > 0 && i < nx && j >= 0 && j <= ny-1){ // Internal faces
+        // Simple central approximation
+        DAT S = 0.5*(Sl[i+j*nx]+Sl[i-1+j*nx]);
+
+        Krlx[i+j*(nx+1)] = S*S;
+        Krgx[i+j*(nx+1)] = (1.-S)*(1.-S);
+    }
+
+    if(i >= 0 && i <= nx-1 && j > 0 && j < ny){ // Internal faces
+        // Simple central approximation
+        DAT S = 0.5*(Sl[i+j*nx]+Sl[i+(j-1)*nx]);
+
+        Krly[i+j*nx] = S*S;
+        Krgy[i+j*nx] = (1.-S)*(1.-S);
     }
 }
 
