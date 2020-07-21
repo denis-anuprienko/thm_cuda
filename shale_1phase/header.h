@@ -27,9 +27,9 @@ private:
     const DAT muf     = 1.0e-3;       // fluid dynamic viscoity, Pa*s
     const DAT rhof    = 7.0e2;        // fluid density, kg/m^3
     const DAT rhos    = 2.0e3;        // solid density, kg/m^3
-    const DAT g       = 9.81;         // m/s^2
-    const DAT c_f     = 4.5e-4*1e-6; // parameter from van Noort and Yarushina, 1/Pa
-    const DAT c_phi   = 12e-3*1e-6;  // parameter from van Noort and Yarushina, 1/Pa
+    const DAT g       = 10.0;         // m/s^2
+    const DAT c_f     = 1./22e9;//4.5e-4*1e-6; // parameter from van Noort and Yarushina, 1/Pa
+    const DAT c_phi   = 9e-3*1e-6;  // parameter from van Noort and Yarushina, 1/Pa
     const DAT Pt      = 43e6;         // confining pressure, Pa
     const DAT P0      = 1e5;          // atmospheric pressure, Pa
     const DAT gamma   = 0.028*1e-6;   // exponent factor for permeability function
@@ -39,11 +39,11 @@ private:
     const int ny      = 128;
     const DAT dx      = Lx/nx;    // cell size
     const DAT dy      = Ly/ny;
-    const DAT niter   = 20e5;      // number of PT steps
-    const DAT eps_a_h = 1e-8;     // absolute tolerance, flow
+    const DAT niter   = 2e5;      // number of PT steps
+    const DAT eps_a_h = 1e-10;     // absolute tolerance, flow
 
-    const DAT dt        = 1e3;    // Seconds
-    const DAT Time      = dt*10;
+    const DAT dt        = 220*60/1e2;    // Seconds
+    const DAT Time      = dt*100;
     const DAT nt        = Time / dt;
 
     bool do_mech   = false;
@@ -60,7 +60,10 @@ private:
     DAT *Kx, *Ky;   // Pressure-dependent permeabilities
     DAT *phi;       // Porosity
     DAT *rsd_h;
-    std::vector<DAT> P_upstr;
+    char *indp_y;
+    char *indp_x;
+    std::vector<DAT> P_upstr; // Upstream pressure at all moments
+    std::vector<DAT> q_dnstr; // Downstream flux at all moments
     // Unknowns on GPU
     DAT *dev_Pf;
     DAT *dev_Pf_old;
@@ -68,6 +71,8 @@ private:
     DAT *dev_Kx, *dev_Ky;
     DAT *dev_phi;
     DAT *dev_rsd_h;
+    char *dev_indp_x;
+    char *dev_indp_y;
 
     std::string respath;
 
