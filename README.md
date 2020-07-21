@@ -5,3 +5,4 @@ The solution method is pseudo-transient method with explicit time stepping, this
 
 1. The main folder contains code for HM-coupling for bentonite, this includes Richards equation for unsaturated flow and mechanical equilibrium equation with additional terms for bentonite swelling
 2. The folder `shale_1phase` contains code for one-phase fluid (CO2) flow in shale with pressure-dependent porosity and permeability
+3. The folder `shale_2phase` contains code for two-phase fluid (liquid CO2 and air) flow in shale with pressure-dependent porosity and permeability
