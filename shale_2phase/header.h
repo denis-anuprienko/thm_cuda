@@ -32,9 +32,9 @@ private:
     const DAT g       = 9.81;         // m/s^2
     const DAT c_f     = 1./22e9;//4.5e-4*1e-6; // parameter from van Noort and Yarushina, 1/Pa
     const DAT c_phi   = 9e-3*1e-6;  // parameter from van Noort and Yarushina, 1/Pa
-    const DAT Pt      = 43e6;         // confining pressure, Pa
-    const DAT P0      = 1e5;          // atmospheric pressure, Pa
-    const DAT gamma   = 0.028*1e-6;   // exponent factor for permeability function
+    const DAT Pt      = 43e6;         // Confining pressure, Pa
+    const DAT P0      = 1e5;          // Atmospheric pressure, Pa
+    const DAT gamma   = 0.028*1e-6;   // Exponent factor for permeability function
 
     const DAT vg_a    = 0.37;         // van Genuchten pore parameter
     const DAT vg_n    = 3.3;          // van Genuchten pore parameter
@@ -42,14 +42,14 @@ private:
 
 
     // Numerics
-    const int nx      = 32;      // number of cells
-    const int ny      = 32;
+    const int nx      = 1;      // number of cells
+    const int ny      = 64;
     const DAT dx      = Lx/nx;    // cell size
     const DAT dy      = Ly/ny;
-    const DAT niter   = 10e5;      // number of PT steps
+    const DAT niter   = 1e5;      // number of PT steps
     const DAT eps_a_h = 1e-6;     // absolute tolerance, flow
 
-    const DAT dt        = 1e3;    // Seconds
+    const DAT dt        = 220*60/1e2;    // Seconds
     const DAT Time      = dt*100;
     const DAT nt        = Time / dt;
 

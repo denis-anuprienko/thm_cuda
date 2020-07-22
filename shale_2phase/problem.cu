@@ -188,7 +188,7 @@ void Problem::Count_Mass_GPU()
 
     DAT mass_new = sum*dx*dy * 0.16 * rhol;
 
-    printf("Liquid mass is %e kg, change is %.1lf %%\n", mass_new, (mass_new-mass_l)/mass_l*100);
+    printf("Liquid mass is %e kg, change is %lf %%\n", mass_new, (mass_new-mass_l)/mass_l*100);
     mass_l = mass_new;
 }
 
@@ -216,6 +216,7 @@ void Problem::H_Substep_GPU()
                 printf("Flow converged in %d it.: r_l = %e, r_g = %e\n", nit, err_l, err_g);
                 break;
             }
+            //Count_Mass_GPU();
         }
     }
     //Update_Poro();
@@ -263,6 +264,7 @@ void Problem::SolveOnGPU()
 
     SetIC_GPU();
     cudaDeviceSynchronize();
+    Count_Mass_GPU();
 
     SaveVTK_GPU(respath + "/sol0.vtk");
 
@@ -337,12 +339,13 @@ __global__ void kernel_SetIC(DAT *Pl, DAT *Pg, DAT *Sl,
     DAT x = (i+0.5)*dx, y = (j+0.5)*dy;
     // Cell variables
     if(i >= 0 && i < nx && j >= 0 && j < ny){
-        if(sqrt((Lx/2.0-x)*(Lx/2.0-x) + (Ly/2.0-y)*(Ly/2.0-y)) < 0.001)
-            Pl[i+j*nx] = 10e6;
-        else
-            Pl[i+j*nx] = 8e6;
+//        if(sqrt((Lx/2.0-x)*(Lx/2.0-x) + (Ly/2.0-y)*(Ly/2.0-y)) < 0.001)
+//            Pl[i+j*nx] = 10e6;
+//        else
+//            Pl[i+j*nx] = 8e6;
 
-        Pg[i+j*nx] = 10e6;
+        Pl[i+j*nx] = 8e6;
+        Pg[i+j*nx] = 0.1e6;
         phi[i+j*nx] = 0.16;
         rsd_l[i+j*nx] = 0.0;
         rsd_g[i+j*nx] = 0.0;
@@ -435,6 +438,20 @@ __global__ void kernel_Compute_Q(DAT *Pl, DAT *Pg,
         int ind = i+j*nx;
         qly[ind] = -rhol*Ky[ind]/mul*Krly[ind]*((Pl[i+j*nx]-Pl[i+(j-1)*nx])/dy + 0*rhol*g);
         qgy[ind] = -rhog*Ky[ind]/mug*Krgy[ind]*((Pg[i+j*nx]-Pg[i+(j-1)*nx])/dy + 0*rhog*g);
+    }
+
+    // Inflow BC at the lower side
+    if(i >= 0 && i <= nx-1 && j == 0){
+        qly[i+j*nx] = 9.4e-3/60/60/rhol * 1e2;
+    }
+
+
+    if(i >= 0 && i <= nx-1 && j == ny){
+        qly[i+j*nx] = -rhol*1e-18/mul*1.0*((8e6-Pl[i+(j-1)*nx])/dy + 0*rhol*g);
+        if(i == 0)
+            ;//printf("flux = %e, P = %e, dP = %e\n", qly[i+j*nx],
+             //                                    Pl[i+(j-1)*nx],
+             //                                    Ky[i+j*nx]*(10e16-Pl[i+(j-1)*nx])/dy);
     }
 }
 
