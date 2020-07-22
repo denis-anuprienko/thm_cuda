@@ -6,7 +6,7 @@
 using namespace std;
 
 #define BLOCK_DIM 16
-#define dt_h      1e3
+#define dt_h      1e4
 #define dt_m      1e-6
 
 void FindMax(DAT *dev_arr, DAT *max, int size);
@@ -173,6 +173,25 @@ void Problem::Update_Poro()
         printf("Error %x at Poro\n", err);
 }
 
+void Problem::Count_Mass_GPU()
+{
+    cublasHandle_t handle;
+    cublasStatus_t stat;
+    cublasCreate(&handle);
+
+    DAT sum = 0.0;
+    stat = cublasDasum(handle, nx*ny, dev_Sl, 1, &sum);
+    if (stat != CUBLAS_STATUS_SUCCESS)
+        printf("Sum failed\n");
+
+    cublasDestroy(handle);
+
+    DAT mass_new = sum*dx*dy * 0.16 * rhol;
+
+    printf("Liquid mass is %e kg, change is %.1lf %%\n", mass_new, (mass_new-mass_l)/mass_l*100);
+    mass_l = mass_new;
+}
+
 void Problem::H_Substep_GPU()
 {
     printf("Flow\n");
@@ -200,6 +219,7 @@ void Problem::H_Substep_GPU()
         }
     }
     //Update_Poro();
+    Count_Mass_GPU();
 }
 
 void Problem::SolveOnGPU()

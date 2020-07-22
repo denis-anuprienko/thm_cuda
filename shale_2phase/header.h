@@ -42,12 +42,12 @@ private:
 
 
     // Numerics
-    const int nx      = 256;      // number of cells
-    const int ny      = 256;
+    const int nx      = 32;      // number of cells
+    const int ny      = 32;
     const DAT dx      = Lx/nx;    // cell size
     const DAT dy      = Ly/ny;
-    const DAT niter   = 1e5;      // number of PT steps
-    const DAT eps_a_h = 1e-10;     // absolute tolerance, flow
+    const DAT niter   = 10e5;      // number of PT steps
+    const DAT eps_a_h = 1e-6;     // absolute tolerance, flow
 
     const DAT dt        = 1e3;    // Seconds
     const DAT Time      = dt*100;
@@ -75,6 +75,7 @@ private:
     DAT *phi;         // Porosity
     DAT *rsd_l;       // Residual of equation for liquid
     DAT *rsd_g;       // Residual of equation for gas
+    DAT mass_l;       // Liquid mass (for conservation checking)
 
     // Unknowns on GPU
     DAT *dev_Pl;
@@ -104,6 +105,7 @@ private:
     void Compute_Q_GPU();     // Compute fluid fluxes using K
     void Update_P_GPU();      // Update pressure and compute residuals
     void Update_Poro();       // Update porosity based on new fluid pressure values
+    void Count_Mass_GPU();    // Count mass (of liquid) to check mass conservation
 
 public:
     Problem(){ Init(); }
