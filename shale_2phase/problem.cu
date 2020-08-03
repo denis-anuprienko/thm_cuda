@@ -178,7 +178,7 @@ void Problem::Update_P_GPU()
         printf("Error %x at Pf\n", err);
 }
 
-void Problem::Update_Poro()
+void Problem::Update_Poro_GPU()
 {
     dim3 dimBlock(BLOCK_DIM, BLOCK_DIM);
     dim3 dimGrid((nx+dimBlock.x-1)/dimBlock.x, (ny+dimBlock.y-1)/dimBlock.y);
@@ -239,7 +239,7 @@ void Problem::H_Substep_GPU()
             //Count_Mass_GPU();
         }
     }
-    //Update_Poro();
+    //Update_Poro_GPU();
     Count_Mass_GPU();
 }
 

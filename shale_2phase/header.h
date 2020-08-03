@@ -105,7 +105,7 @@ private:
     void Compute_S_GPU();     // Compute liquid saturation (no calculation for gas needed)
     void Compute_Q_GPU();     // Compute fluid fluxes using K
     void Update_P_GPU();      // Update pressure and compute residuals
-    void Update_Poro();       // Update porosity based on new fluid pressure values
+    void Update_Poro_GPU();       // Update porosity based on new fluid pressure values
     void Count_Mass_GPU();    // Count mass (of liquid) to check mass conservation
 
 public:
