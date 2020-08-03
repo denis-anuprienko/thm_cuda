@@ -266,6 +266,7 @@ void Problem::SolveOnGPU()
     cudaMalloc((void**)&dev_Krgx,   sizeof(DAT) * (nx+1)*ny);
     cudaMalloc((void**)&dev_Krgy,   sizeof(DAT) * nx*(ny+1));
     cudaMalloc((void**)&dev_phi,    sizeof(DAT) * nx*ny);
+    cudaMalloc((void**)&dev_phi_old,sizeof(DAT) * nx*ny);
     cudaMalloc((void**)&dev_rsd_l,  sizeof(DAT) * nx*ny);
     cudaMalloc((void**)&dev_rsd_g,  sizeof(DAT) * nx*ny);
     cudaEventRecord(tbeg);
@@ -342,6 +343,7 @@ void Problem::SolveOnGPU()
     cudaFree(dev_Krgx);
     cudaFree(dev_Krgy);
     cudaFree(dev_phi);
+    cudaFree(dev_phi_old);
     cudaFree(dev_rsd_l);
     cudaFree(dev_rsd_g);
 

@@ -90,6 +90,7 @@ private:
     DAT *dev_qgx, *dev_qgy;
     DAT *dev_Kx, *dev_Ky;
     DAT *dev_phi;
+    DAT *dev_phi_old;
     DAT *dev_rsd_l;
     DAT *dev_rsd_g;
 
