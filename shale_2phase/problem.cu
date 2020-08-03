@@ -52,7 +52,7 @@ __global__ void kernel_Compute_Q(DAT *Pl, DAT *Pg, DAT *Sl,
 __global__ void kernel_Update_P(DAT *Pl, DAT *Pg,
                                 DAT *Sl, DAT *Sl_old,
                                 DAT *qlx, DAT *qly, DAT *qgx, DAT *qgy,
-                                DAT *phi,
+                                DAT *phi, double *phi_old,
                                 DAT *rsd_l, DAT *rsd_g,
                                 const DAT rhol, const DAT rhog,
                                 const int nx, const int ny,
@@ -169,7 +169,7 @@ void Problem::Update_P_GPU()
     kernel_Update_P<<<dimGrid,dimBlock>>>(dev_Pl, dev_Pg,
                                           dev_Sl, dev_Sl_old,
                                           dev_qlx, dev_qly, dev_qgx, dev_qgy,
-                                          dev_phi,
+                                          dev_phi, dev_phi_old,
                                           dev_rsd_l, dev_rsd_g,
                                           rhol, rhog,
                                           nx, ny, dx, dy, dt);
@@ -547,7 +547,7 @@ __global__ void kernel_Compute_K(DAT *Pl,
 __global__ void kernel_Update_P(DAT *Pl, DAT *Pg,
                                 DAT *Sl, DAT *Sl_old,
                                 DAT *qlx, DAT *qly, DAT *qgx, DAT *qgy,
-                                DAT *phi,
+                                DAT *phi, DAT *phi_old,
                                 DAT *rsd_l, DAT *rsd_g,
                                 const DAT rhol, const DAT rhog,
                                 const int nx, const int ny,
@@ -559,11 +559,11 @@ __global__ void kernel_Update_P(DAT *Pl, DAT *Pg,
     if(i >= 0 && i < nx && j >= 0 && j < ny){
         int ind = i+nx*j;
 
-        rsd_l[ind] = phi[ind]*rhol * (Sl[ind] - Sl_old[ind])/dt
+        rsd_l[ind] = rhol * (phi[ind]*Sl[ind] - phi_old[ind]*Sl_old[ind])/dt
                  + (qlx[i+1+j*(nx+1)] - qlx[i+j*(nx+1)])/dx
                  + (qly[i+(j+1)*nx]   - qly[i+j*nx])/dy;
 
-        rsd_g[ind] = -phi[ind]*rhog * (Sl[ind] - Sl_old[ind])/dt
+        rsd_g[ind] = rhog * (phi[ind]*Sl[ind] - phi_old[ind]*Sl_old[ind])/dt
                  + (qgx[i+1+j*(nx+1)] - qgx[i+j*(nx+1)])/dx
                  + (qgy[i+(j+1)*nx]   - qgy[i+j*nx])/dy;
 
