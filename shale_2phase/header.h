@@ -37,13 +37,13 @@ private:
     const DAT gamma   = 0.028*1e-6;   // Exponent factor for permeability function
 
     const DAT vg_a    = 0.37;         // van Genuchten pore parameter
-    const DAT vg_n    = 3.3;          // van Genuchten pore parameter
+    const DAT vg_n    = 2.5;          // van Genuchten pore parameter
     const DAT vg_m    = 1. - 1./vg_n;
 
 
     // Numerics
     const int nx      = 1;      // number of cells
-    const int ny      = 64;
+    const int ny      = 32;
     const DAT dx      = Lx/nx;    // cell size
     const DAT dy      = Ly/ny;
     const DAT niter   = 1e5;      // number of PT steps

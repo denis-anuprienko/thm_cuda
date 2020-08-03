@@ -239,7 +239,7 @@ void Problem::H_Substep_GPU()
             //Count_Mass_GPU();
         }
     }
-    //Update_Poro();
+    Update_Poro();
     Count_Mass_GPU();
 }
 
@@ -607,7 +607,7 @@ void Problem::SaveVTK_GPU(std::string path)
     cudaMemcpy(qlx, dev_qlx, sizeof(DAT) * (nx+1)*ny, cudaMemcpyDeviceToHost);
     cudaMemcpy(qly, dev_qly, sizeof(DAT) * nx*(ny+1), cudaMemcpyDeviceToHost);
     cudaMemcpy(Kx,  dev_Kx, sizeof(DAT) * (nx+1)*ny, cudaMemcpyDeviceToHost);
-    cudaMemcpy(Ky,  dev_Ky, sizeof(DAT) * nx*(ny+1), cudaMemcpyDeviceToHost);
+    cudaMemcpy(Ky,  dev_Krly, sizeof(DAT) * nx*(ny+1), cudaMemcpyDeviceToHost);
     cudaMemcpy(phi, dev_phi, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToHost);
 
     SaveVTK(path);
