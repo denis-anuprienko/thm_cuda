@@ -34,6 +34,14 @@ void Problem::SaveVTK(string path)
 
     out << "CELL_DATA " << nx * ny << endl;
 
+    out << "SCALARS Fluid_Pressure double" << endl;
+    out << "LOOKUP_TABLE default" << endl;
+    for(int j = 0; j < ny; j++){
+        for(int i = 0; i < nx; i++){
+            out << Sl[i+j*nx]*Pl[i+j*nx] + (1.0-Sl[i+j*nx])*Pg[i+j*nx] << endl;
+        }
+    }
+
     out << "SCALARS Liquid_Pressure double" << endl;
     out << "LOOKUP_TABLE default" << endl;
     for(int j = 0; j < ny; j++){
