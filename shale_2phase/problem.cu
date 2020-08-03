@@ -317,9 +317,10 @@ void Problem::SolveOnGPU()
         printf("\n\n =======  TIME STEP %d, T = %lf s =======\n", it, it*dt);
         if(do_mech)
 ;//            M_Substep_GPU();
-        cudaMemcpy(dev_Pl_old, dev_Pl, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToDevice);
-        cudaMemcpy(dev_Pg_old, dev_Pg, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToDevice);
-        cudaMemcpy(dev_Sl_old, dev_Sl, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToDevice);
+        cudaMemcpy(dev_Pl_old,  dev_Pl,  sizeof(DAT) * nx*ny, cudaMemcpyDeviceToDevice);
+        cudaMemcpy(dev_Pg_old,  dev_Pg,  sizeof(DAT) * nx*ny, cudaMemcpyDeviceToDevice);
+        cudaMemcpy(dev_Sl_old,  dev_Sl,  sizeof(DAT) * nx*ny, cudaMemcpyDeviceToDevice);
+        cudaMemcpy(dev_phi_old, dev_phi, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToDevice);
         H_Substep_GPU();
         string name = respath + "/sol" + to_string(it) + ".vtk";
         SaveVTK_GPU(name);
