@@ -58,6 +58,8 @@ __global__ void kernel_Update_P(DAT *Pl, DAT *Pg,
                                 const int nx, const int ny,
                                 const DAT dx, const DAT dy, const DAT dt);
 
+__global__ void kernel_Update_P_impl();
+
 __global__ void kernel_Update_Poro(DAT *Pl, DAT *Pg,
                                    DAT *Pl_old, DAT *Pg_old,
                                    DAT *Sl, DAT *Sl_old,
@@ -175,7 +177,17 @@ void Problem::Update_P_GPU()
                                           nx, ny, dx, dy, dt);
     cudaError_t err = cudaGetLastError();
     if(err != 0)
-        printf("Error %x at Pf\n", err);
+        printf("Error %x at P\n", err);
+}
+
+void Problem::Update_P_impl_GPU()
+{
+    dim3 dimBlock(BLOCK_DIM, BLOCK_DIM);
+    dim3 dimGrid((nx+dimBlock.x-1)/dimBlock.x, (ny+dimBlock.y-1)/dimBlock.y);
+    kernel_Update_P_impl<<<dimGrid,dimBlock>>>();
+    cudaError_t err = cudaGetLastError();
+    if(err != 0)
+        printf("Error %x at P_impl\n", err);
 }
 
 void Problem::Update_Poro_GPU()
@@ -574,6 +586,11 @@ __global__ void kernel_Update_P(DAT *Pl, DAT *Pg,
         rsd_l[ind] = fabs(rsd_l[ind]);
         rsd_g[ind] = fabs(rsd_g[ind]);
     }
+}
+
+__global__ void kernel_Update_P_impl()
+{
+
 }
 
 __global__ void kernel_Update_Poro(DAT *Pl, DAT *Pg,
