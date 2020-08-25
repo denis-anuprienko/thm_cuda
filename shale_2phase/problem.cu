@@ -58,7 +58,16 @@ __global__ void kernel_Update_P(DAT *Pl, DAT *Pg,
                                 const int nx, const int ny,
                                 const DAT dx, const DAT dy, const DAT dt);
 
-__global__ void kernel_Update_P_impl();
+__global__ void kernel_Update_P_impl(DAT *Pl, DAT *Pg, DAT *Pl_old, DAT *Pg_old,
+                                     DAT *Sl, DAT *Sl_old,
+                                     DAT *qlx, DAT *qly, DAT *qgx, DAT *qgy,
+                                     DAT *phi, DAT *phi_old,
+                                     DAT *rsd_l, DAT *rsd_g,
+                                     const DAT mul, const DAT mug,
+                                     const DAT rhol, const DAT rhog,
+                                     const DAT vg_a, const DAT vg_n, const DAT vg_m,
+                                     const int nx, const int ny,
+                                     const DAT dx, const DAT dy, const DAT dt);
 
 __global__ void kernel_Update_Poro(DAT *Pl, DAT *Pg,
                                    DAT *Pl_old, DAT *Pg_old,
@@ -161,7 +170,7 @@ void Problem::Compute_Kr_GPU()
                                            nx, ny);
     cudaError_t err = cudaGetLastError();
     if(err != 0)
-        printf("Error %x at S\n", err);
+        printf("Error %x at Kr\n", err);
 }
 
 void Problem::Update_P_GPU()
@@ -184,7 +193,15 @@ void Problem::Update_P_impl_GPU()
 {
     dim3 dimBlock(BLOCK_DIM, BLOCK_DIM);
     dim3 dimGrid((nx+dimBlock.x-1)/dimBlock.x, (ny+dimBlock.y-1)/dimBlock.y);
-    kernel_Update_P_impl<<<dimGrid,dimBlock>>>();
+    kernel_Update_P_impl<<<dimGrid,dimBlock>>>(dev_Pl, dev_Pg, dev_Pl_old, dev_Pg_old,
+                                               dev_Sl, dev_Sl_old,
+                                               dev_qlx, dev_qly, dev_qgx, dev_qgy,
+                                               dev_phi, dev_phi_old,
+                                               dev_rsd_l, dev_rsd_g,
+                                               mul, mug,
+                                               rhol, rhog,
+                                               vg_a, vg_n, vg_m,
+                                               nx, ny, dx, dy, dt);
     cudaError_t err = cudaGetLastError();
     if(err != 0)
         printf("Error %x at P_impl\n", err);
@@ -445,12 +462,12 @@ __global__ void kernel_Compute_S(DAT *Pl, DAT *Pg, DAT *Sl,
 
         DAT Pc = Pg[i+j*nx] - Pl[i+j*nx];
 
-        if(Pc <= 0.0 - Pe)
+        if(Pc <= 0.0)
         //if(Pc >= Pe)
             Sl[i+j*nx] = 1.0;
         else{
-            //Sl[i+j*nx] = pow(1.0 + pow(vg_a/rhol/g*Pc, vg_n), -vg_m);
-            Sl[i+j*nx] = 1. / (1. + pow(Pc+Pe, 1./p));
+            Sl[i+j*nx] = pow(1.0 + pow(vg_a/rhol/g*Pc, vg_n), -vg_m); // S = (1 + P^n)^(-m)
+            //Sl[i+j*nx] = 1. / (1. + pow(Pc+Pe, 1./p));
         }
     }
 }
@@ -588,9 +605,50 @@ __global__ void kernel_Update_P(DAT *Pl, DAT *Pg,
     }
 }
 
-__global__ void kernel_Update_P_impl()
+__global__ void kernel_Update_P_impl(DAT *Pl, DAT *Pg, DAT *Pl_old, DAT *Pg_old,
+                                     DAT *Sl, DAT *Sl_old,
+                                     DAT *qlx, DAT *qly, DAT *qgx, DAT *qgy,
+                                     DAT *phi, DAT *phi_old,
+                                     DAT *rsd_l, DAT *rsd_g,
+                                     const DAT mul, const DAT mug,
+                                     const DAT rhol, const DAT rhog,
+                                     const DAT vg_a, const DAT vg_n, const DAT vg_m,
+                                     const int nx, const int ny,
+                                     const DAT dx, const DAT dy, const DAT dt)
 {
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    int j = blockDim.y * blockIdx.y + threadIdx.y;
 
+    if(i >= 0 && i < nx && j >= 0 && j < ny){
+        int ind = i+nx*j;
+
+        // Compute residual
+        DAT div_ql = (qlx[i+1+j*(nx+1)] - qlx[i+j*(nx+1)])/dx
+                   + (qly[i+(j+1)*nx]   - qly[i+j*nx])/dy;
+        DAT div_qg = (qgx[i+1+j*(nx+1)] - qgx[i+j*(nx+1)])/dx
+                   + (qgy[i+(j+1)*nx]   - qgy[i+j*nx])/dy;
+
+        rsd_l[ind] = rhol * (phi[ind]*Sl[ind] - phi_old[ind]*Sl_old[ind])/dt + div_ql;
+        rsd_g[ind] = rhog * (phi[ind]*Sl[ind] - phi_old[ind]*Sl_old[ind])/dt + div_qg;
+
+        rsd_l[ind] = fabs(rsd_l[ind]);
+        rsd_g[ind] = fabs(rsd_g[ind]);
+
+        DAT aPc    = vg_a/rhol/9.81*(Pg[ind] - Pl[ind]);
+        DAT dSldPc = -vg_m*vg_n * pow(aPc,vg_n-1.) * pow(1. + pow(aPc, vg_n), -vg_m-1.); // < 0
+        dSldPc     = -dSldPc;
+        //if
+
+        // Determine pseudo-transient step
+        DAT D      = 1e-18/phi[ind]/min(mul,mug)/dSldPc ; // "Diffusion coefficient" for a cell
+        DAT dtau   = min(dx*dx,dy*dy) / D / 8.1;
+
+        // Update using "implicit" PT formula
+        Pl[ind]    = Pl[ind]/dtau + phi[ind]*rhol*dSldPc*Pl_old[ind]/dt - div_ql;
+        Pl[ind]    = Pl[ind]/(phi[ind]*rhol*dSldPc/dt + 1./dtau);
+        Pg[ind]    = Pg[ind]/dtau + phi[ind]*rhog*dSldPc*Pg_old[ind]/dt - div_qg;
+        Pg[ind]    = Pg[ind]/(phi[ind]*rhog*dSldPc/dt + 1./dtau);
+    }
 }
 
 __global__ void kernel_Update_Poro(DAT *Pl, DAT *Pg,

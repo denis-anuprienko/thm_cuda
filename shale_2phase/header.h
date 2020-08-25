@@ -46,8 +46,8 @@ private:
     const int ny      = 32;
     const DAT dx      = Lx/nx;    // cell size
     const DAT dy      = Ly/ny;
-    const DAT niter   = 1e5;      // number of PT steps
-    const DAT eps_a_h = 1e-6;     // absolute tolerance, flow
+    const DAT niter   = 10e5;      // number of PT steps
+    const DAT eps_a_h = 1e-5;     // absolute tolerance, flow
 
     const DAT dt        = 220*60/1e2;    // Seconds
     const DAT Time      = dt*100;
