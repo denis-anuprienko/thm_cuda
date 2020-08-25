@@ -31,7 +31,7 @@ private:
     const DAT rhos    = 2.0e3;        // Solid density, kg/m^3
     const DAT g       = 9.81;         // m/s^2
     const DAT c_f     = 1./22e9;//4.5e-4*1e-6; // parameter from van Noort and Yarushina, 1/Pa
-    const DAT c_phi   = 9e-3*1e-6;  // parameter from van Noort and Yarushina, 1/Pa
+    const DAT c_phi   = 9e-3*1e-6;    // parameter from van Noort and Yarushina, 1/Pa
     const DAT Pt      = 43e6;         // Confining pressure, Pa
     const DAT P0      = 1e5;          // Atmospheric pressure, Pa
     const DAT gamma   = 0.028*1e-6;   // Exponent factor for permeability function
@@ -42,7 +42,7 @@ private:
 
 
     // Numerics
-    const int nx      = 1;      // number of cells
+    const int nx      = 1;        // number of cells
     const int ny      = 32;
     const DAT dx      = Lx/nx;    // cell size
     const DAT dy      = Ly/ny;
@@ -105,7 +105,8 @@ private:
     void Compute_S_GPU();     // Compute liquid saturation (no calculation for gas needed)
     void Compute_Q_GPU();     // Compute fluid fluxes using K
     void Update_P_GPU();      // Update pressure and compute residuals
-    void Update_Poro_GPU();       // Update porosity based on new fluid pressure values
+    void Update_P_impl_GPU(); // "Implicitly" update pressure and compute residuals
+    void Update_Poro_GPU();   // Update porosity based on new fluid pressure values
     void Count_Mass_GPU();    // Count mass (of liquid) to check mass conservation
 
 public:
