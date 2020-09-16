@@ -6,14 +6,13 @@
 using namespace std;
 
 #define BLOCK_DIM 16
-#define dt_h      1e3
 #define dt_m      1e-6
 
-#define FLUX 9.4e-3/60/60/700 * 1e4
+#define FLUX 0//9.4e-3/60/60/700 * 1e4
 
 void FindMax(DAT *dev_arr, DAT *max, int size);
 
-__global__ void kernel_SetIC(DAT *Pl, DAT *Pg, DAT *Sl,
+__global__ void kernel_SetIC(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Sl,
                              DAT *Kx, DAT *Ky,
                              DAT *Krlx, DAT *Krly, DAT *Krgx, DAT *Krgy,
                              DAT *qlx, DAT *qly, DAT *qgx, DAT *qgy,
@@ -58,9 +57,10 @@ __global__ void kernel_Update_P(DAT *Pl, DAT *Pg,
                                 const int nx, const int ny,
                                 const DAT dx, const DAT dy, const DAT dt);
 
-__global__ void kernel_Update_P_impl(DAT *Pl, DAT *Pg, DAT *Pl_old, DAT *Pg_old,
+__global__ void kernel_Update_P_impl(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Pl_old, DAT *Pg_old,
                                      DAT *Sl, DAT *Sl_old,
                                      DAT *qlx, DAT *qly, DAT *qgx, DAT *qgy,
+                                     DAT *Krlx, DAT *Krly, DAT *Krgx, DAT *Krgy,
                                      DAT *phi, DAT *phi_old,
                                      DAT *rsd_l, DAT *rsd_g,
                                      const DAT mul, const DAT mug,
@@ -100,7 +100,7 @@ void Problem::SetIC_GPU()
     dim3 dimGrid((nx+dimBlock.x-1)/dimBlock.x, (ny+dimBlock.y-1)/dimBlock.y);
     printf("Launching %dx%d blocks of %dx%d threads\n", (nx+1+dimBlock.x-1)/dimBlock.x,
            (ny+1+dimBlock.y-1)/dimBlock.y, BLOCK_DIM, BLOCK_DIM);
-    kernel_SetIC<<<dimGrid,dimBlock>>>(dev_Pl, dev_Pg, dev_Sl,
+    kernel_SetIC<<<dimGrid,dimBlock>>>(dev_Pl, dev_Pg, dev_Pc, dev_Sl,
                                        dev_Kx, dev_Ky,
                                        dev_Krlx, dev_Krly, dev_Krgx, dev_Krgy,
                                        dev_qlx, dev_qly, dev_qgx, dev_qgy,
@@ -193,9 +193,10 @@ void Problem::Update_P_impl_GPU()
 {
     dim3 dimBlock(BLOCK_DIM, BLOCK_DIM);
     dim3 dimGrid((nx+dimBlock.x-1)/dimBlock.x, (ny+dimBlock.y-1)/dimBlock.y);
-    kernel_Update_P_impl<<<dimGrid,dimBlock>>>(dev_Pl, dev_Pg, dev_Pl_old, dev_Pg_old,
+    kernel_Update_P_impl<<<dimGrid,dimBlock>>>(dev_Pl, dev_Pg, dev_Pc, dev_Pl_old, dev_Pg_old,
                                                dev_Sl, dev_Sl_old,
                                                dev_qlx, dev_qly, dev_qgx, dev_qgy,
+                                               dev_Krlx, dev_Krly, dev_Krgx, dev_Krgy,
                                                dev_phi, dev_phi_old,
                                                dev_rsd_l, dev_rsd_g,
                                                mul, mug,
@@ -222,22 +223,29 @@ void Problem::Update_Poro_GPU()
 
 void Problem::Count_Mass_GPU()
 {
+    DAT sum = 0.0;
+
     cublasHandle_t handle;
     cublasStatus_t stat;
     cublasCreate(&handle);
-
-    DAT sum = 0.0;
     stat = cublasDasum(handle, nx*ny, dev_Sl, 1, &sum);
     if (stat != CUBLAS_STATUS_SUCCESS)
         printf("Sum failed\n");
-
     cublasDestroy(handle);
-
     DAT mass_new = sum*dx*dy * 0.16 * rhol;
+
+    cublasCreate(&handle);
+    stat = cublasDasum(handle, nx*ny, dev_Sl_old, 1, &sum);
+    if (stat != CUBLAS_STATUS_SUCCESS)
+        printf("Sum failed\n");
+    cublasDestroy(handle);
+    DAT mass_old = sum*dx*dy * 0.16 * rhol;
 
     //printf("Liquid mass is %e kg, change is %lf %%\n", mass_new, (mass_new-mass_l)/mass_l*100);
     DAT dt = 220*60/1e2;
-    printf("Mass change is %e kg, expected %e kg\n", mass_new-mass_l, FLUX*dt*Lx);
+    printf("Mass change is %e kg (%2.1lf%%), expected %e kg\n", mass_new-mass_old,
+                                                                (mass_new-mass_old)/mass_old*100,
+                                                                 FLUX*dt*Lx);
     mass_l = mass_new;
 }
 
@@ -247,20 +255,22 @@ void Problem::H_Substep_GPU()
     fflush(stdout);
     DAT err_l = 1, err_g = 1, err_l_old, err_g_old;
     for(int nit = 1; nit <= niter; nit++){
-        Compute_K_GPU();
+        //Compute_K_GPU();
         Compute_S_GPU();
         Compute_Kr_GPU();
         Compute_Q_GPU();
-        Update_P_GPU();
+        //Update_P_GPU();
+        Update_P_impl_GPU();
         if(nit%10000 == 0 || nit == 1){
             err_l_old = err_l;
             err_g_old = err_g;
             FindMax(dev_rsd_l, &err_l, nx*ny);
             FindMax(dev_rsd_g, &err_g, nx*ny);
             printf("iter %d: r_l = %e, r_g = %e\n", nit, err_l, err_g);
+            //printf("iter %d: dr_l = %e, dr_g = %e\n", nit, err_l-err_l_old, err_g-err_g_old);
             fflush(stdout);
             if((    (err_l<eps_a_h && err_g<eps_a_h) ||
-                    (fabs(err_l-err_l_old) < 1e-15 && fabs(err_g-err_g_old) < 1e-15))
+                    (fabs(err_l-err_l_old) < 1e-8 && fabs(err_g-err_g_old) < 1e-8))
                 && nit > 10000){
                 printf("Flow converged in %d it.: r_l = %e, r_g = %e\n", nit, err_l, err_g);
                 break;
@@ -282,6 +292,7 @@ void Problem::SolveOnGPU()
     cudaMalloc((void**)&dev_Pl_old, sizeof(DAT) * nx*ny);
     cudaMalloc((void**)&dev_Pg,     sizeof(DAT) * nx*ny);
     cudaMalloc((void**)&dev_Pg_old, sizeof(DAT) * nx*ny);
+    cudaMalloc((void**)&dev_Pc,     sizeof(DAT) * nx*ny);
     cudaMalloc((void**)&dev_Sl,     sizeof(DAT) * nx*ny);
     cudaMalloc((void**)&dev_Sl_old, sizeof(DAT) * nx*ny);
     cudaMalloc((void**)&dev_qlx,    sizeof(DAT) * (nx+1)*ny);
@@ -311,6 +322,8 @@ void Problem::SolveOnGPU()
     Kx      = new DAT[(nx+1)*ny];
     Ky      = new DAT[nx*(ny+1)];
     phi     = new DAT[nx*ny];
+    rsd_l   = new DAT[nx*ny];
+    rsd_g   = new DAT[nx*ny];
 
     SetIC_GPU();
     cudaDeviceSynchronize();
@@ -360,6 +373,7 @@ void Problem::SolveOnGPU()
     cudaFree(dev_Pl_old);
     cudaFree(dev_Pg);
     cudaFree(dev_Pg_old);
+    cudaFree(dev_Pc);
     cudaFree(dev_Sl);
     cudaFree(dev_Sl_old);
     cudaFree(dev_qlx);
@@ -392,10 +406,12 @@ void Problem::SolveOnGPU()
     delete [] Kx;
     delete [] Ky;
     delete [] phi;
+    delete [] rsd_l;
+    delete [] rsd_g;
 }
 
 
-__global__ void kernel_SetIC(DAT *Pl, DAT *Pg, DAT *Sl,
+__global__ void kernel_SetIC(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Sl,
                              DAT *Kx, DAT *Ky,
                              DAT *Krlx, DAT *Krly, DAT *Krgx, DAT *Krgy,
                              DAT *qlx, DAT *qly, DAT *qgx, DAT *qgy,
@@ -415,13 +431,14 @@ __global__ void kernel_SetIC(DAT *Pl, DAT *Pg, DAT *Sl,
     DAT x = (i+0.5)*dx, y = (j+0.5)*dy;
     // Cell variables
     if(i >= 0 && i < nx && j >= 0 && j < ny){
-//        if(sqrt((Lx/2.0-x)*(Lx/2.0-x) + (Ly/2.0-y)*(Ly/2.0-y)) < 0.001)
-//            Pl[i+j*nx] = 10e6;
-//        else
-//            Pl[i+j*nx] = 8e6;
+        if(sqrt((Lx/2.0-x)*(Lx/2.0-x) + (Ly/2.0-y)*(Ly/2.0-y)) < 0.001)
+            Pl[i+j*nx] = 9.9e6;
+        else
+            Pl[i+j*nx] = 8e6;
 
-        Pl[i+j*nx] = 0e6;
-        Pg[i+j*nx] = 8e6;
+        //Pl[i+j*nx] = 0e6;
+        Pg[i+j*nx] = 10e6;
+        Pc[i+j*nx] = Pg[i+j*nx] - Pl[i+j*nx];
         phi[i+j*nx] = 0.16;
         rsd_l[i+j*nx] = 0.0;
         rsd_g[i+j*nx] = 0.0;
@@ -467,6 +484,7 @@ __global__ void kernel_Compute_S(DAT *Pl, DAT *Pg, DAT *Sl,
             Sl[i+j*nx] = 1.0;
         else{
             Sl[i+j*nx] = pow(1.0 + pow(vg_a/rhol/g*Pc, vg_n), -vg_m); // S = (1 + P^n)^(-m)
+            //
             //Sl[i+j*nx] = 1. / (1. + pow(Pc+Pe, 1./p));
         }
     }
@@ -482,26 +500,28 @@ __global__ void kernel_Compute_Kr(DAT *Sl,
 
     if(i > 0 && i < nx && j >= 0 && j <= ny-1){ // Internal faces
         // Simple central approximation
-        DAT S = 0.5*(Sl[i+j*nx]+Sl[i-1+j*nx]);
+        //DAT S = 0.5*(Sl[i+j*nx]+Sl[i-1+j*nx]);
+        DAT S = max(Sl[i+j*nx], Sl[i-1+j*nx]);
 
-        //Krlx[i+j*(nx+1)] = pow(S,2.0);
-        //Krgx[i+j*(nx+1)] = pow(1.-S,2.0);
+        Krlx[i+j*(nx+1)] = pow(S,2.0);
+        Krgx[i+j*(nx+1)] = pow(1.-S,2.0);
 
-        Krlx[i+j*(nx+1)] = sqrt(S) * pow(1.-pow(1.-(pow(S,1./vg_m)), vg_m), 2.);
-        Krgx[i+j*(nx+1)] = 1.3978-3.7694*S+12.709*S*S-20.642*S*S*S+10.309*S*S*S*S;
+        //Krlx[i+j*(nx+1)] = sqrt(S) * pow(1.-pow(1.-(pow(S,1./vg_m)), vg_m), 2.);
+        //Krgx[i+j*(nx+1)] = 1.3978-3.7694*S+12.709*S*S-20.642*S*S*S+10.309*S*S*S*S;
     }
 
     if(i >= 0 && i <= nx-1 && j > 0 && j < ny){ // Internal faces
         // Simple central approximation
-        DAT S = 0.5*(Sl[i+j*nx]+Sl[i+(j-1)*nx]);
+        //DAT S = 0.5*(Sl[i+j*nx]+Sl[i+(j-1)*nx]);
+        DAT S = max(Sl[i+j*nx], Sl[i+(j-1)*nx]);
 
-        //Krly[i+j*nx] = pow(S,2.0);
-        //Krgy[i+j*nx] = pow(1.-S,2.0);
+        Krly[i+j*nx] = pow(S,2.0);
+        Krgy[i+j*nx] = pow(1.-S,2.0);
 
-        Krly[i+j*nx] = sqrt(S) * pow(1.-pow(1.-(pow(S,1./vg_m)), vg_m), 2.);
+        //Krly[i+j*nx] = sqrt(S) * pow(1.-pow(1.-(pow(S,1./vg_m)), vg_m), 2.);
         //if(S < 0.99)
         //    Krly[i+j*nx] = 1e-8;
-        Krgy[i+j*nx] = 1.3978-3.7694*S+12.709*S*S-20.642*S*S*S+10.309*S*S*S*S;
+        //Krgy[i+j*nx] = 1.3978-3.7694*S+12.709*S*S-20.642*S*S*S+10.309*S*S*S*S;
     }
 }
 
@@ -541,8 +561,8 @@ __global__ void kernel_Compute_Q(DAT *Pl, DAT *Pg,
 
 
     if(i >= 0 && i <= nx-1 && j == ny){
-        qly[i+j*nx] = -rhol*1e-18/mul*1.0*((0e6-Pl[i+(j-1)*nx])/dy + 0*rhol*g);
-        qgy[i+j*nx] = -rhol*1e-18/mug*1.0*((8e6-Pg[i+(j-1)*nx])/dy + 0*rhog*g);
+        //qly[i+j*nx] = -rhol*1e-18/mul*1.0*((0e6-Pl[i+(j-1)*nx])/dy + 0*rhol*g);
+        //qgy[i+j*nx] = -rhol*1e-18/mug*1.0*((8e6-Pg[i+(j-1)*nx])/dy + 0*rhog*g);
         if(i == 0)
             ;//printf("flux = %e, P = %e, dP = %e\n", qly[i+j*nx],
              //                                    Pl[i+(j-1)*nx],
@@ -597,6 +617,11 @@ __global__ void kernel_Update_P(DAT *Pl, DAT *Pg,
                  + (qgx[i+1+j*(nx+1)] - qgx[i+j*(nx+1)])/dx
                  + (qgy[i+(j+1)*nx]   - qgy[i+j*nx])/dy;
 
+        DAT D    = max(rhol,rhog)*1e-18/1e-3;//min(mul,mug);
+
+        DAT dt_h = min(dx*dx,dy*dy) / D / 4.1;//1e3;
+           dt_h *= 1e-3;
+
         Pl[ind]  -= rsd_l[ind] * dt_h;
         Pg[ind]  -= rsd_g[ind] * dt_h;
 
@@ -605,9 +630,10 @@ __global__ void kernel_Update_P(DAT *Pl, DAT *Pg,
     }
 }
 
-__global__ void kernel_Update_P_impl(DAT *Pl, DAT *Pg, DAT *Pl_old, DAT *Pg_old,
+__global__ void kernel_Update_P_impl(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Pl_old, DAT *Pg_old,
                                      DAT *Sl, DAT *Sl_old,
                                      DAT *qlx, DAT *qly, DAT *qgx, DAT *qgy,
+                                     DAT *Krlx, DAT *Krly, DAT *Krgx, DAT *Krgy,
                                      DAT *phi, DAT *phi_old,
                                      DAT *rsd_l, DAT *rsd_g,
                                      const DAT mul, const DAT mug,
@@ -622,32 +648,71 @@ __global__ void kernel_Update_P_impl(DAT *Pl, DAT *Pg, DAT *Pl_old, DAT *Pg_old,
     if(i >= 0 && i < nx && j >= 0 && j < ny){
         int ind = i+nx*j;
 
+        DAT PHI = 0.16;
+
         // Compute residual
         DAT div_ql = (qlx[i+1+j*(nx+1)] - qlx[i+j*(nx+1)])/dx
                    + (qly[i+(j+1)*nx]   - qly[i+j*nx])/dy;
         DAT div_qg = (qgx[i+1+j*(nx+1)] - qgx[i+j*(nx+1)])/dx
                    + (qgy[i+(j+1)*nx]   - qgy[i+j*nx])/dy;
 
-        rsd_l[ind] = rhol * (phi[ind]*Sl[ind] - phi_old[ind]*Sl_old[ind])/dt + div_ql;
-        rsd_g[ind] = rhog * (phi[ind]*Sl[ind] - phi_old[ind]*Sl_old[ind])/dt + div_qg;
+        DAT aPc    = vg_a/rhol/9.81*(Pg[ind] - Pl[ind]);
+        DAT dSldPc;
+        if(aPc < 0.0){
+            dSldPc = 0.0;
+        }
+        else{
+            dSldPc = -vg_m*vg_n * pow(aPc,vg_n-1.) * pow(1. + pow(aPc,vg_n), -vg_m-1.); // < 0
+            //dSldPc = -dSldPc;
+        }
+
+        phi[ind] = dSldPc;
+
+
+
+        rsd_l[ind] =  PHI*rhol * (Sl[ind] - Sl_old[ind])/dt + div_ql;
+        rsd_g[ind] = -PHI*rhog * (Sl[ind] - Sl_old[ind])/dt + div_qg;
 
         rsd_l[ind] = fabs(rsd_l[ind]);
         rsd_g[ind] = fabs(rsd_g[ind]);
 
-        DAT aPc    = vg_a/rhol/9.81*(Pg[ind] - Pl[ind]);
-        DAT dSldPc = -vg_m*vg_n * pow(aPc,vg_n-1.) * pow(1. + pow(aPc, vg_n), -vg_m-1.); // < 0
-        dSldPc     = -dSldPc;
-        //if
+        DAT Krl = max(max(Krlx[i+j*(nx+1)], Krlx[i+j*(nx+1)]), max(Krly[i+j*nx], Krly[i+(j+1)*nx]));
+        DAT Krg = max(max(Krgx[i+j*(nx+1)], Krgx[i+j*(nx+1)]), max(Krgy[i+j*nx], Krgy[i+(j+1)*nx]));
 
         // Determine pseudo-transient step
-        DAT D      = 1e-18/phi[ind]/min(mul,mug)/dSldPc ; // "Diffusion coefficient" for a cell
-        DAT dtau   = min(dx*dx,dy*dy) / D / 8.1;
+        DAT D;    // "Diffusion coefficient" for the cell
+        DAT dtau; // Pseudo-transient step
+        if(dSldPc > 1e-8 || true){
+            D    = 1e-18/PHI/min(mul,mug);// * max(rhol,rhog) * max(Krl,Krg);
+            dtau = 1./(4.1*D/min(dx*dx,dy*dy) + 1./dt);
+            //dtau = min(dx*dx,dy*dy) / D / 4.1;
+            dtau *= 1e3;
+        }
+        else{
+            D    = max(rhol,rhog)*1e-18/min(mul,mug) * max(Krl,Krg);
+            dtau = min(dx*dx,dy*dy) / D / 4.1;
+        }
 
-        // Update using "implicit" PT formula
-        Pl[ind]    = Pl[ind]/dtau + phi[ind]*rhol*dSldPc*Pl_old[ind]/dt - div_ql;
-        Pl[ind]    = Pl[ind]/(phi[ind]*rhol*dSldPc/dt + 1./dtau);
-        Pg[ind]    = Pg[ind]/dtau + phi[ind]*rhog*dSldPc*Pg_old[ind]/dt - div_qg;
-        Pg[ind]    = Pg[ind]/(phi[ind]*rhog*dSldPc/dt + 1./dtau);
+        DAT Pc_old = Pg_old[ind] - Pl_old[ind];
+        DAT cc = -1.0, cg = 1.0;
+
+//        Pc[ind] = PHI*rhol*( cc*Pc[ind]/dtau + Pc_old*dSldPc/dt) - div_ql;
+//        Pc[ind] = Pc[ind] / (dSldPc/dt + cc*1./dtau) / (PHI*rhol);
+        Pc[ind] = Pc[ind]*(cc/dtau + dSldPc/dt) - (Sl[ind]-Sl_old[ind])/dt - div_ql/PHI/rhol;
+        Pc[ind] = Pc[ind]/(cc/dtau + dSldPc/dt);
+
+        Pg[ind] = Pg[ind]*(cg/dtau - dSldPc/dt) + (Sl[ind]-Sl_old[ind])/dt - div_qg/PHI/rhog;
+        Pg[ind] = Pg[ind]/(cg/dtau - dSldPc/dt);
+
+        Pl[ind] = Pg[ind] - Pc[ind];
+
+//        Pg[ind] = PHI*rhog*( cg*Pg[ind]/dtau + dSldPc*(Pg_old[ind] + Pl[ind] - Pl_old[ind])/dt ) + div_qg;
+//        Pg[ind] = Pg[ind] / (dSldPc/dt + cg*1./dtau) / (PHI*rhog);
+//        Pl[ind] = Pg[ind] - Pc[ind];
+
+        //Pl[ind] = PHI*rhog*( cg*Pl[ind]/dtau + dSldPc*(Pl_old[ind] + Pg[ind] - Pg_old[ind])/dt ) + div_qg;
+        //Pl[ind] = Pl[ind] / (dSldPc/dt + cg*1./dtau) / (PHI*rhog);
+        //Pg[ind] = Pl[ind] + Pc[ind];
     }
 }
 
@@ -687,6 +752,8 @@ void Problem::SaveVTK_GPU(std::string path)
     cudaMemcpy(Kx,  dev_Kx, sizeof(DAT) * (nx+1)*ny, cudaMemcpyDeviceToHost);
     cudaMemcpy(Ky,  dev_Ky, sizeof(DAT) * nx*(ny+1), cudaMemcpyDeviceToHost);
     cudaMemcpy(phi, dev_phi, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToHost);
+    cudaMemcpy(rsd_l,  dev_rsd_l, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToHost);
+    cudaMemcpy(rsd_g,  dev_rsd_g, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToHost);
 
     SaveVTK(path);
 }

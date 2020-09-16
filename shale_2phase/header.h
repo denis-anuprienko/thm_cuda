@@ -42,15 +42,15 @@ private:
 
 
     // Numerics
-    const int nx      = 1;        // number of cells
-    const int ny      = 32;
+    const int nx      = 256;        // number of cells
+    const int ny      = 256;
     const DAT dx      = Lx/nx;    // cell size
     const DAT dy      = Ly/ny;
-    const DAT niter   = 10e5;      // number of PT steps
+    const DAT niter   = 20e4;     // number of PT steps
     const DAT eps_a_h = 1e-5;     // absolute tolerance, flow
 
-    const DAT dt        = 220*60/1e2;    // Seconds
-    const DAT Time      = dt*100;
+    const DAT dt        = 1e3;//220*60/1e2;    // Seconds
+    const DAT Time      = dt*10;
     const DAT nt        = Time / dt;
 
     bool do_mech   = false;
@@ -80,6 +80,7 @@ private:
     // Unknowns on GPU
     DAT *dev_Pl;
     DAT *dev_Pg;
+    DAT *dev_Pc;
     DAT *dev_Sl;
     DAT *dev_Pl_old;
     DAT *dev_Pg_old;

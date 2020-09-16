@@ -114,5 +114,20 @@ void Problem::SaveVTK(string path)
         }
     }
 
+    out << "SCALARS Rl double" << endl;
+    out << "LOOKUP_TABLE default" << endl;
+    for(int j = 0; j < ny; j++){
+        for(int i = 0; i < nx; i++){
+            out << rsd_l[i+j*nx] << endl;
+        }
+    }
+    out << "SCALARS Rg double" << endl;
+    out << "LOOKUP_TABLE default" << endl;
+    for(int j = 0; j < ny; j++){
+        for(int i = 0; i < nx; i++){
+            out << rsd_g[i+j*nx] << endl;
+        }
+    }
+
     out.close();
 }
