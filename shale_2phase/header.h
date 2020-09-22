@@ -42,15 +42,16 @@ private:
 
 
     // Numerics
-    const int nx      = 256;        // number of cells
-    const int ny      = 256;
-    const DAT dx      = Lx/nx;    // cell size
+    const int nx      = 32;          // number of cells
+    const int ny      = nx;
+    const DAT dx      = Lx/nx;        // cell size
     const DAT dy      = Ly/ny;
-    const DAT niter   = 20e4;     // number of PT steps
-    const DAT eps_a_h = 1e-5;     // absolute tolerance, flow
+    const DAT niter   = 150e4;        // number of PT steps
+    const DAT eps_a_h = 1e-10;         // absolute tolerance, flow
+    const DAT eps_r_h = 1e-5;
 
-    const DAT dt        = 1e3;//220*60/1e2;    // Seconds
-    const DAT Time      = dt*10;
+    const DAT dt        = 1e3;//220*60/10;    // Seconds
+    const DAT Time      = dt*1;
     const DAT nt        = Time / dt;
 
     bool do_mech   = false;
@@ -96,6 +97,7 @@ private:
     DAT *dev_rsd_g;
 
     std::string respath;
+    std::ofstream flog;
 
     // Functions calculating unknowns over whole mesh
     void H_Substep_GPU();     // Hydro substep
