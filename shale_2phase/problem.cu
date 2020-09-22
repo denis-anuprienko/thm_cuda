@@ -749,24 +749,6 @@ __global__ void kernel_Update_P_impl(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Pl_old, DAT
 
         Pl[ind] = (b*d + c*e)/(a*d - c*f);
         Pg[ind] = (a*e + b*f)/(a*d - c*f);
-
-//        Pc[ind] = PHI*rhol*( cc*Pc[ind]/dtau + Pc_old*dSldPc/dt) - div_ql;
-//        Pc[ind] = Pc[ind] / (dSldPc/dt + cc*1./dtau) / (PHI*rhol);
-//        Pc[ind] = Pc[ind]*(cc/dtau + dSldPc/dt) - (Sl[ind]-Sl_old[ind])/dt - div_ql/PHI/rhol;
-//        Pc[ind] = Pc[ind]/(cc/dtau + dSldPc/dt);
-
-//        Pg[ind] = Pg[ind]*(cg/dtau - dSldPc/dt) + (Sl[ind]-Sl_old[ind])/dt - div_qg/PHI/rhog;
-//        Pg[ind] = Pg[ind]/(cg/dtau - dSldPc/dt);
-
-//        Pl[ind] = Pg[ind] - Pc[ind];
-
-//        Pg[ind] = PHI*rhog*( cg*Pg[ind]/dtau + dSldPc*(Pg_old[ind] + Pl[ind] - Pl_old[ind])/dt ) + div_qg;
-//        Pg[ind] = Pg[ind] / (dSldPc/dt + cg*1./dtau) / (PHI*rhog);
-//        Pl[ind] = Pg[ind] - Pc[ind];
-
-        //Pl[ind] = PHI*rhog*( cg*Pl[ind]/dtau + dSldPc*(Pl_old[ind] + Pg[ind] - Pg_old[ind])/dt ) + div_qg;
-        //Pl[ind] = Pl[ind] / (dSldPc/dt + cg*1./dtau) / (PHI*rhog);
-        //Pg[ind] = Pl[ind] + Pc[ind];
     }
 }
 
@@ -847,7 +829,7 @@ __global__ void kernel_Update_Poro(DAT *Pl, DAT *Pg,
 
 void Problem::SaveVTK_GPU(std::string path)
 {
-    return;
+    //return;
     // Copy data from device and perform standard SaveVTK
 
     cudaMemcpy(Pl,  dev_Pl, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToHost);
