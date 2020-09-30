@@ -24,8 +24,8 @@ private:
     const DAT Lx      = 0.012;        // Domain length, m
     const DAT Ly      = 0.012;
     const DAT K0      = 1e-18;        // Initial intrinsic permeability, m^2
-    const DAT mul     = 1.0e-3;       // Liquid dynamic viscoity, Pa*s
-    const DAT mug     = 1.0e-3;       // Gas    dynamic viscoity, Pa*s
+    const DAT mul     = 1.e-3;       // Liquid dynamic viscoity, Pa*s
+    const DAT mug     = 1.e-3;       // Gas    dynamic viscoity, Pa*s
     const DAT rhol    = 7.0e2;        // Liquid density, kg/m^3
     const DAT rhog    = 7.0e2;        // Gas    density, kg/m^3
     const DAT rhos    = 2.0e3;        // Solid density, kg/m^3
@@ -42,11 +42,11 @@ private:
 
 
     // Numerics
-    const int nx      = 32;          // number of cells
+    const int nx      = 128;          // number of cells
     const int ny      = nx;
     const DAT dx      = Lx/nx;        // cell size
     const DAT dy      = Ly/ny;
-    const DAT niter   = 150e4;        // number of PT steps
+    const DAT niter   = 20e4;        // number of PT steps
     const DAT eps_a_h = 1e-10;         // absolute tolerance, flow
     const DAT eps_r_h = 1e-5;
 

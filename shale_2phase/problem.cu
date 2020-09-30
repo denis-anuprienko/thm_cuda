@@ -219,8 +219,11 @@ void Problem::Update_P_impl_GPU()
                                                vg_a, vg_n, vg_m,
                                                nx, ny, dx, dy, dt);
     cudaError_t err = cudaGetLastError();
-    if(err != 0)
+    if(err != 0){
         printf("Error %x at P_impl\n", err);
+        fflush(stdout);
+        exit(0);
+    }
 }
 
 void Problem::Update_Poro_GPU()
@@ -277,14 +280,21 @@ void Problem::H_Substep_GPU()
     printf("Flow\n");
     fflush(stdout);
     DAT err_l = 1, err_g = 1, err_l_old, err_g_old, err_l_0 = -1, err_g_0 = -1;
+    int nout;
+    if(max(nx,ny) < 256)
+        nout = 1000;
+    else
+        nout = 10000;
     for(int nit = 1; nit <= niter; nit++){
+        //printf("iter %d\n", nit);
+        fflush(stdout);
         //Compute_K_GPU();
         Compute_S_GPU();
         Compute_Kr_GPU();
         Compute_Q_GPU();
         //Update_P_GPU();
         Update_P_impl_GPU();
-        if(nit%10000 == 0 || nit == 1 || nit == 2){
+        if(nit%1000 == 0 || nit == 1 || nit == 2){
             err_l_old = err_l;
             err_g_old = err_g;
             FindMax(dev_rsd_l, &err_l, nx*ny);
@@ -314,6 +324,8 @@ void Problem::H_Substep_GPU()
                 flog << "Converged in " << nit << endl;
                 break;
             }
+            string name = respath + "/isol" + to_string(nit) + ".vtk";
+            SaveVTK_GPU(name);
             //Count_Mass_GPU();
         }
     }
@@ -472,14 +484,14 @@ __global__ void kernel_SetIC(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Sl,
     // Cell variables
     if(i >= 0 && i < nx && j >= 0 && j < ny){
         if(sqrt((Lx/2.0-x)*(Lx/2.0-x) + (Ly/2.0-y)*(Ly/2.0-y)) < 0.001)
-            Pl[i+j*nx] = 11e6;
+            Pl[i+j*nx] = 11e6;//8.1e6;//11e6;
         else
             Pl[i+j*nx] = 8e6;
 
         //Pl[i+j*nx] = 8e6;
         Pg[i+j*nx] = 10e6;
         Pc[i+j*nx] = Pg[i+j*nx] - Pl[i+j*nx];
-        phi[i+j*nx] = 0.16;
+        phi[i+j*nx] = 0;//.16; shit
         rsd_l[i+j*nx] = 0.0;
         rsd_g[i+j*nx] = 0.0;
     }
@@ -597,6 +609,12 @@ __global__ void kernel_Compute_Q(DAT *Pl, DAT *Pg,
         DAT x = (i+0.5)*dx;
         //if(x > 0.012*0.25 && x < 0.012*0.75)
         qly[i+j*nx] = FLUX;
+        //qly[i+j*nx] = -rhol*1/mul*Krly[i+j*nx]*((Pl[i+j*nx]-0)/dy + 0*rhol*g);
+    }
+
+
+    if(j >= 0 && j <= ny-1 && i == 0){
+        //qlx[i+j*(nx+1)] = -rhol*1e0/mul*((Pl[i+j*nx]-1)/dx);
     }
 
 
@@ -700,21 +718,17 @@ __global__ void kernel_Update_P_impl(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Pl_old, DAT
         DAT dSldPc;
         if(aPc < 0.0){
             dSldPc = 0.0;
+            //return; ///// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         }
         else{
             dSldPc = -vg_m*vg_n * pow(aPc,vg_n-1.) * pow(1. + pow(aPc,vg_n), -vg_m-1.); // < 0
             //dSldPc = -dSldPc;
         }
 
-        phi[ind] = dSldPc;
-
 
 
         rsd_l[ind] =  PHI*rhol * (Sl[ind] - Sl_old[ind])/dt + div_ql;
         rsd_g[ind] = -PHI*rhog * (Sl[ind] - Sl_old[ind])/dt + div_qg;
-
-        rsd_l[ind] = /*dx*dy*/fabs(rsd_l[ind]);
-        rsd_g[ind] = /*dx*dy*/fabs(rsd_g[ind]);
 
         DAT Krl = max(max(Krlx[i+j*(nx+1)], Krlx[i+j*(nx+1)]), max(Krly[i+j*nx], Krly[i+(j+1)*nx]));
         DAT Krg = max(max(Krgx[i+j*(nx+1)], Krgx[i+j*(nx+1)]), max(Krgy[i+j*nx], Krgy[i+(j+1)*nx]));
@@ -723,32 +737,79 @@ __global__ void kernel_Update_P_impl(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Pl_old, DAT
         DAT D;    // "Diffusion coefficient" for the cell
         DAT dtau; // Pseudo-transient step
         if(fabs(dSldPc) > 1e-10 && false){
-            D    = 700*1e-18/min(mul,mug) / PHI/rhol / fabs(dSldPc);// * max(rhol,rhog) * max(Krl,Krg);
+            D    = 700*1e-18/min(mul,mug) / PHI/rhol;// / fabs(dSldPc);// * max(rhol,rhog) * max(Krl,Krg);
             dtau = 1./(4.1*D/min(dx*dx,dy*dy) + 1./dt);
             //dtau = min(dx*dx,dy*dy) / D / 4.1;
-            dtau *= 100;
+            //dtau *= 100;
         }
         else{
-            D    = max(rhol,rhog)*1e-18/min(mul,mug) / PHI/rhol * max(Krl,Krg);
+            D    = max(rhol,rhog)*1e-18/min(mul,mug) / PHI/rhol;// * max(Krl,Krg);
             dtau = min(dx*dx,dy*dy) / D / 4.1;
-            dtau *= 1;
+            dtau *= 1e-6;
+            //dtau *= fabs(dSldPc) * 1e-1;
         }
+        if(dtau < 1e-15)
+            return;
 
-        DAT Pc_old = Pg_old[ind] - Pl_old[ind];
+//        DAT Pc_old = Pg_old[ind] - Pl_old[ind];
         DAT cc = 1.0, cg = 1.0, cl = 1.0;
 
-        DAT dS = (Sl[ind] - Sl_old[ind])/dt;
-        // a*Pl = b + c*Pg
-        // d*Pg = e + f*Pl
-        DAT a  = -dSldPc/dt + cl/dtau;
-        DAT b  = Pl[ind]*a - dS - div_ql/PHI/rhol + dSldPc*Pg[ind]/dt;
-        DAT c  = -dSldPc/dt;
-        DAT d  = -dSldPc/dt + cg/dtau;
-        DAT e  = Pg[ind]*d + dS - div_qg/PHI/rhog + dSldPc*Pl[ind]/dt;
-        DAT f  = c;
+//        DAT dS = (Sl[ind] - Sl_old[ind])/dt;
+//        // a*Pl = b + c*Pg
+//        // d*Pg = e + f*Pl
+//        DAT PAR = -0*(1.-1./nx);
+//        DAT a  = -dSldPc/dt + cl/dtau;
+//        DAT b  = Pl[ind]*a - dS - div_ql/PHI/rhol + PAR*phi[ind] + dSldPc*Pg[ind]/dt;
+//        DAT c  = -dSldPc/dt;
+//        DAT d  = -dSldPc/dt + cg/dtau;
+//        DAT e  = Pg[ind]*d + dS - div_qg/PHI/rhog + PAR*Pc[ind] + dSldPc*Pl[ind]/dt;
+//        DAT f  = c;
 
-        Pl[ind] = (b*d + c*e)/(a*d - c*f);
-        Pg[ind] = (a*e + b*f)/(a*d - c*f);
+//        Pl[ind] = (b*d + c*e)/(a*d - c*f);
+//        Pg[ind] = (a*e + b*f)/(a*d - c*f);
+
+
+//        phi[ind]   = (Sl[ind] - Sl_old[ind])/dt;//rsd_l[ind];
+//        Pc[ind]    = rsd_g[ind];
+
+        DAT cC = 1.0, Slp = Sl[ind];
+        //Sl[ind] = 0.22;
+
+        //Sl[ind] -= rsd_l[ind]*dtau;
+
+//        if(Sl[ind] > 1.0)
+//            Sl[ind] = 1.0;
+//        if(Sl[ind] < 1e-8)
+//            Sl[ind] = 1e-8;
+
+        for(; dtau > 1e-18; dtau *= 0.1){
+            Sl[ind] = cC*Sl[ind]/dtau + Sl_old[ind]/dt - div_ql/PHI/rhol;
+            Sl[ind] = Sl[ind]/(1./dt + cC*1./dtau);
+            if(Sl[ind] > 1.0 || Sl[ind] < 0.0 || isinf(Sl[ind]) || isnan(Sl[ind])){
+                //printf("Bad Sl = %e at cell (%d %d), Slp = %e, Sl_old = %e, divq = %e, dtau = %e\n", Sl[ind], i, j, Slp, Sl_old[ind], div_ql/PHI/rhol, dtau);
+                Sl[ind] = Slp;
+            }
+            else
+                break;
+
+        }
+        phi[ind] = dtau;
+
+        Pg[ind] = Pg[ind] + dtau * ((Sl[ind] - Sl_old[ind])/dt - div_qg/PHI/rhog);
+
+        DAT Pcc = rhol*9.81/vg_a * pow(pow(Sl[ind],-1./vg_m) - 1., 1./vg_n);
+        if(isnan(Pcc) || isinf(Pcc)){
+            printf("Bad Pcc at cell (%d %d), Sl = %e\n", i, j, Sl[ind]);
+            //exit(0);
+            __trap();
+        }
+        Pl[ind] = Pg[ind] - Pcc;
+
+
+
+        // END
+        rsd_l[ind] = fabs(rsd_l[ind]);
+        rsd_g[ind] = fabs(rsd_g[ind]);
     }
 }
 
@@ -777,7 +838,7 @@ __global__ void kernel_Update_P_diff(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Pl_old, DAT
 
 
 
-        rsd_l[ind] = (Pl[ind] - Pl_old[ind])/dt + div_ql;
+        rsd_l[ind] = 0*(Pl[ind] - Pl_old[ind])/dt + div_ql;
 
         //rsd_l[ind] = fabs(rsd_l[ind]);
         rsd_g[ind] = 0;
@@ -787,18 +848,63 @@ __global__ void kernel_Update_P_diff(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Pl_old, DAT
         DAT D;    // "Diffusion coefficient" for the cell
         DAT dtau; // Pseudo-transient step
 
-        D    = 700*1e-18/min(mul,mug);
+        D    = 1;//700*1e-18/min(mul,mug);
 
 
-        dtau = 1./(4.1*D/min(dx*dx,dy*dy) + 1./dt) * 1.001;
-//        dtau = 4.1*D/min(dx*dx,dy*dy);
+        //dtau = 1./(4.1*D/min(dx*dx,dy*dy) + 1./dt) * 1e0;
+        //dtau = 1./(4.1*D/min(dx*dx,dy*dy)) * 1e-2;
+        dtau = 1./(8.1*D/min(dx,dy));
 
-        Pl[ind] = Pl[ind]/dtau - div_ql + Pl_old[ind]/dt;
-        Pl[ind] = Pl[ind]/(1./dt + 1./dtau);
+        // 'Implicit' update
+        //Pl[ind] = Pl[ind]/dtau - div_ql - 0*(1.-5./nx)*phi[ind] + 0*Pl_old[ind]/dt;
+        //Pl[ind] = Pl[ind]/(0*1./dt + 1./dtau);
 
-        //Pl[ind]    = Pl[ind] - dtau * (rsd_l[ind] + (1.-2./nx)*phi[ind]);
+        //Pl[ind]    = Pl[ind] - dtau * (rsd_l[ind] + (1.-1./nx)*phi[ind]);
 
-//        phi[ind]   = rsd_l[ind];
+//        DAT qxl = 0.0, qxr = 0.0, qyl = 0.0, qyu = 0.0;
+
+//        if(i > 0)
+//            qxl = -D*(Pl[i+j*nx]-Pl[i-1+j*nx])/dx;
+//        else
+//            qxl = -D*(Pl[i+1+j*nx]-9e6)/dx;
+
+//        if(i < nx-1)
+//            qxr = -D*(Pl[i+1+j*nx]-Pl[i+j*nx])/dx;
+//        else
+//            qxr = -D*(7e6-Pl[i+j*nx])/dx;
+
+//        if(j > 0)
+//            qyl = -D*(Pl[i+j*nx]-Pl[i+(j-1)*nx])/dx;
+//        else
+//            qyl = -D*(Pl[i+j*nx]-7e6)/dx;
+
+//        if(j < ny-1)
+//            qyu = -D*(Pl[i+(j+1)*nx]-Pl[i+j*nx])/dx;
+//        else
+//            qyu = -D*(9e6-Pl[i+j*nx])/dx;
+//        DAT div_q = (qxr-qxl)/dx + (qyu-qyl)/dy;
+
+
+
+
+        //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        //! Pc contains rsd_old
+        //! phi contains rsd_old2
+        //! Pl_old contains P_old
+        //! Pg_old contains P_old2
+        Pg_old[ind]= Pl_old[ind];
+        Pl_old[ind]= Pl[ind];
+        phi[ind]   = Pc[ind];
+        Pc[ind]    = rsd_l[ind];
+        rsd_l[ind] = div_ql;
+
+        DAT A = 1.-2./nx;
+
+        //Pl[ind] = Pl[ind] - dtau * (div_ql + 0*(1.-0./nx)*phi[ind]);
+        //Pl[ind] = 2*Pl[ind] - phi[ind] - dtau*dtau * div_ql;
+
+        DAT P_old2 = Pg_old[ind];
+        Pl[ind] = (-P_old2 + Pl[ind]*(2.+A*dtau) - dtau*dtau * div_ql)/(1.+A*dtau);
         rsd_l[ind] = fabs(rsd_l[ind]);
     }
 }

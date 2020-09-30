@@ -89,13 +89,13 @@ void Problem::SaveVTK(string path)
         }
     }
 
-//    out << "SCALARS Porosity double" << endl;
-//    out << "LOOKUP_TABLE default" << endl;
-//    for(int j = 0; j < ny; j++){
-//        for(int i = 0; i < nx; i++){
-//            out << phi[i+j*nx] << endl;
-//        }
-//    }
+    out << "SCALARS Porosity double" << endl;
+    out << "LOOKUP_TABLE default" << endl;
+    for(int j = 0; j < ny; j++){
+        for(int i = 0; i < nx; i++){
+            out << phi[i+j*nx] << endl;
+        }
+    }
 
 //    out << "SCALARS Cell_Number double" << endl;
 //    out << "LOOKUP_TABLE default" << endl;
