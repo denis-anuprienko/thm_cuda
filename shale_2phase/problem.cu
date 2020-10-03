@@ -104,6 +104,9 @@ __global__ void kernel_Update_Poro(DAT *Pl, DAT *Pg,
                                    const DAT c_phi,
                                    const int nx, const int ny);
 
+__global__ void kernel_Multiply_Cell_Data(DAT *va, DAT *vb, DAT *vres,
+                                   const int nx, const int ny);
+
 void FindMax(DAT *dev_arr, DAT *max, int size)
 {
     cublasHandle_t handle;
@@ -1017,6 +1020,18 @@ __global__ void kernel_Update_Poro(DAT *Pl, DAT *Pg,
         phi[ind] = 0.16/(1.0 - c_phi*(Pf-Pf_old));
 
 
+    }
+}
+
+__global__ void kernel_Multiply_Cell_Data(DAT *va, DAT *vb, DAT *vres,
+                                          const int nx, const int ny)
+{
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    int j = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if(i >= 0 && i < nx && j >= 0 && j < ny){
+        int ind = i+nx*j;
+        vres[ind] = va[ind] * vb[ind];
     }
 }
 
