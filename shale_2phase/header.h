@@ -42,7 +42,7 @@ private:
 
 
     // Numerics
-    const int nx      = 128;          // number of cells
+    const int nx      = 16;          // number of cells
     const int ny      = nx;
     const DAT dx      = Lx/nx;        // cell size
     const DAT dy      = Ly/ny;
@@ -100,17 +100,18 @@ private:
     std::ofstream flog;
 
     // Functions calculating unknowns over whole mesh
-    void H_Substep_GPU();     // Hydro substep
-    void M_Substep_GPU();     // Mechanical substep
-    void SetIC_GPU();         // Set initial conditions
-    void Compute_K_GPU();     // Compute intrinsic permeability
-    void Compute_Kr_GPU();    // Compute relative  permeability
-    void Compute_S_GPU();     // Compute liquid saturation (no calculation for gas needed)
-    void Compute_Q_GPU();     // Compute fluid fluxes using K
-    void Update_P_GPU();      // Update pressure and compute residuals
-    void Update_P_impl_GPU(); // "Implicitly" update pressure and compute residuals
-    void Update_Poro_GPU();   // Update porosity based on new fluid pressure values
-    void Count_Mass_GPU();    // Count mass (of liquid) to check mass conservation
+    void H_Substep_GPU();          // Hydro substep
+    void M_Substep_GPU();          // Mechanical substep
+    void SetIC_GPU();              // Set initial conditions
+    void Compute_K_GPU();          // Compute intrinsic permeability
+    void Compute_Kr_GPU();         // Compute relative  permeability
+    void Compute_S_GPU();          // Compute liquid saturation (no calculation for gas needed)
+    void Compute_Q_GPU();          // Compute fluid fluxes using K
+    void Update_P_GPU();           // Update pressure and compute residuals
+    void Update_P_impl_GPU();      // "Implicitly" update pressure and compute residuals
+    void Update_P_Poro_impl_GPU(); // "Implicitly" update pressure, porosity and compute residuals
+    void Update_Poro_GPU();        // Update porosity based on new fluid pressure values
+    void Count_Mass_GPU();         // Count mass (of liquid) to check mass conservation
 
 public:
     Problem(){ Init(); }
