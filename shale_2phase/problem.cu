@@ -283,21 +283,38 @@ void Problem::Count_Mass_GPU()
     //return;
     DAT sum = 0.0;
 
+    // Needed to launch multiplication kernel
+    dim3 dimBlock(BLOCK_DIM, BLOCK_DIM);
+    dim3 dimGrid((nx+dimBlock.x-1)/dimBlock.x, (ny+dimBlock.y-1)/dimBlock.y);
+
+    DAT *dev_mass; // vector that stores liquid mass in cells
+    cudaMalloc((void**)&dev_mass, sizeof(DAT) * nx*ny);
+
+    kernel_Multiply_Cell_Data<<<dimGrid,dimBlock>>>(dev_Sl, dev_phi, dev_mass, nx, ny);
+    cudaError_t err = cudaGetLastError();
+    if(err != 0)
+        printf("Error %x at Mul\n", err);
     cublasHandle_t handle;
     cublasStatus_t stat;
     cublasCreate(&handle);
-    stat = cublasDasum(handle, nx*ny, dev_Sl, 1, &sum);
+    stat = cublasDasum(handle, nx*ny, dev_mass, 1, &sum);
     if (stat != CUBLAS_STATUS_SUCCESS)
         printf("Sum failed\n");
     cublasDestroy(handle);
-    DAT mass_new = sum*dx*dy * 0.16 * rhol;
+    DAT mass_new = sum*dx*dy * rhol;
 
+    kernel_Multiply_Cell_Data<<<dimGrid,dimBlock>>>(dev_Sl_old, dev_phi_old, dev_mass, nx, ny);
+    err = cudaGetLastError();
+    if(err != 0)
+        printf("Error %x at Mul\n", err);
     cublasCreate(&handle);
-    stat = cublasDasum(handle, nx*ny, dev_Sl_old, 1, &sum);
+    stat = cublasDasum(handle, nx*ny, dev_mass, 1, &sum);
     if (stat != CUBLAS_STATUS_SUCCESS)
         printf("Sum failed\n");
     cublasDestroy(handle);
-    DAT mass_old = sum*dx*dy * 0.16 * rhol;
+    DAT mass_old = sum*dx*dy * rhol;
+
+    cudaFree(dev_mass);
 
     //printf("Liquid mass is %e kg, change is %lf %%\n", mass_new, (mass_new-mass_l)/mass_l*100);
     //DAT dt = 220*60/1e0;

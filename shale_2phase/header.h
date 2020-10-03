@@ -42,7 +42,7 @@ private:
 
 
     // Numerics
-    const int nx      = 16;          // number of cells
+    const int nx      = 64;          // number of cells
     const int ny      = nx;
     const DAT dx      = Lx/nx;        // cell size
     const DAT dy      = Ly/ny;
