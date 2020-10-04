@@ -549,27 +549,29 @@ __global__ void kernel_SetIC(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Sl,
     DAT x = (i+0.5)*dx, y = (j+0.5)*dy;
     // Cell variables
     if(i >= 0 && i < nx && j >= 0 && j < ny){
+        int ind = i+j*nx;
+
         if(sqrt((Lx/2.0-x)*(Lx/2.0-x) + (Ly/2.0-y)*(Ly/2.0-y)) < 0.001){
-            //Pl[i+j*nx] = 11e6;//8.1e6;//11e6;
-            Sl[i+j*nx] = 1.0;
+            //Pl[ind] = 11e6;//8.1e6;//11e6;
+            Sl[ind] = 1.0;
         }
         else{
             //Pl[i+j*nx] = 8e6;
-            Sl[i+j*nx] = 8.9e-4;
+            Sl[ind] = 8.9e-4;
         }
 
-        //Pl[i+j*nx] = 8e6;
-        Pg[i+j*nx] = 10e6;
-        DAT Pcc = rhol*9.81/vg_a * pow(pow(Sl[i+j*nx],-1./vg_m) - 1., 1./vg_n);
+        //Pl[ind] = 8e6;
+        Pg[ind] = 10e6;
+        DAT Pcc = rhol*9.81/vg_a * pow(pow(Sl[ind],-1./vg_m) - 1., 1./vg_n);
         if(isnan(Pcc) || isinf(Pcc)){
-            printf("Bad Pcc at cell (%d %d), Sl = %e\n", i, j, Sl[i+j*nx]);
+            printf("Bad Pcc at cell (%d %d), Sl = %e\n", i, j, Sl[ind]);
             __trap();
         }
-        Pl[i+j*nx] = Pg[i+j*nx] - Pcc;
-        phi[i+j*nx] = 0.16;
-        rhog[i+j*nx] = rhog0;
-        rsd_l[i+j*nx] = 0.0;
-        rsd_g[i+j*nx] = 0.0;
+        Pl[ind] = Pg[ind] - Pcc;
+        phi[ind] = 0.16;
+        rhog[ind] = rhog0 * (1. + Pg[ind]/1e5);
+        rsd_l[ind] = 0.0;
+        rsd_g[ind] = 0.0;
     }
     // Vertical face variables - x-fluxes, for example
     if(i >= 0 && i <= nx && j >= 0 && j < ny){
