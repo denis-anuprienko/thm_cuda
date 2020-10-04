@@ -73,6 +73,14 @@ void Problem::SaveVTK(string path)
         }
     }
 
+    out << "SCALARS Gas_Density double" << endl;
+    out << "LOOKUP_TABLE default" << endl;
+    for(int j = 0; j < ny; j++){
+        for(int i = 0; i < nx; i++){
+            out << rhog[i+j*nx] << endl;
+        }
+    }
+
 //    out << "SCALARS Gas_Saturation double" << endl;
 //    out << "LOOKUP_TABLE default" << endl;
 //    for(int j = 0; j < ny; j++){

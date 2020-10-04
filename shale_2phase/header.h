@@ -27,7 +27,7 @@ private:
     const DAT mul     = 1.e-3;       // Liquid dynamic viscoity, Pa*s
     const DAT mug     = 1.e-3;       // Gas    dynamic viscoity, Pa*s
     const DAT rhol    = 7.0e2;        // Liquid density, kg/m^3
-    const DAT rhog    = 7.0e2;        // Gas    density, kg/m^3
+    const DAT rhog0   = 7.0e2;        // Gas    density, kg/m^3
     const DAT rhos    = 2.0e3;        // Solid density, kg/m^3
     const DAT g       = 9.81;         // m/s^2
     const DAT c_f     = 1./22e9;//4.5e-4*1e-6; // parameter from van Noort and Yarushina, 1/Pa
@@ -42,7 +42,7 @@ private:
 
 
     // Numerics
-    const int nx      = 256;          // number of cells
+    const int nx      = 64;          // number of cells
     const int ny      = nx;
     const DAT dx      = Lx/nx;        // cell size
     const DAT dy      = Ly/ny;
@@ -74,6 +74,7 @@ private:
     DAT *qgx, *qgy;   // Gas    fluxes
     DAT *Kx, *Ky;     // Pressure-dependent intrinsic permeabilities
     DAT *phi;         // Porosity
+    DAT *rhog;        // Gas density
     DAT *rsd_l;       // Residual of equation for liquid
     DAT *rsd_g;       // Residual of equation for gas
     DAT mass_l;       // Liquid mass (for conservation checking)
@@ -93,6 +94,7 @@ private:
     DAT *dev_Kx, *dev_Ky;
     DAT *dev_phi;
     DAT *dev_phi_old;
+    DAT *dev_rhog;
     DAT *dev_rsd_l;
     DAT *dev_rsd_g;
 

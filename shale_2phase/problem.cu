@@ -18,9 +18,9 @@ __global__ void kernel_SetIC(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Sl,
                              DAT *Kx, DAT *Ky,
                              DAT *Krlx, DAT *Krly, DAT *Krgx, DAT *Krgy,
                              DAT *qlx, DAT *qly, DAT *qgx, DAT *qgy,
-                             DAT *phi,
+                             DAT *phi, DAT *rhog,
                              DAT *rsd_l, DAT *rsd_g,
-                             const DAT K0, const DAT rhol, const DAT vg_a, const DAT vg_m, const DAT vg_n,
+                             const DAT K0, const DAT rhol, const DAT rhog0, const DAT vg_a, const DAT vg_m, const DAT vg_n,
                              const int nx, const int ny, const DAT Lx, const DAT Ly);
 
 
@@ -44,7 +44,7 @@ __global__ void kernel_Compute_Q(DAT *Pl, DAT *Pg, DAT *Sl,
                                  DAT *Kx, DAT *Ky,
                                  DAT *Krlx, DAT *Krly, DAT *Krgx, DAT *Krgy,
                                  DAT *qlx, DAT *qly, DAT *qgx, DAT *qgy,
-                                 const DAT rhol, const DAT rhog,
+                                 const DAT rhol, DAT *rhog,
                                  const DAT mul, const DAT mug,
                                  const DAT g,
                                  const int nx, const int ny,
@@ -78,7 +78,7 @@ __global__ void kernel_Update_P_Poro_impl(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Pl_old
                                      DAT *phi, DAT *phi_old,
                                      DAT *rsd_l, DAT *rsd_g,
                                      const DAT mul, const DAT mug,
-                                     const DAT rhol, const DAT rhog,
+                                     const DAT rhol, DAT *rhog,
                                      const DAT vg_a, const DAT vg_n, const DAT vg_m,
                                      const DAT c_phi,
                                      const int nx, const int ny,
@@ -136,8 +136,9 @@ void Problem::SetIC_GPU()
                                        dev_Krlx, dev_Krly, dev_Krgx, dev_Krgy,
                                        dev_qlx, dev_qly, dev_qgx, dev_qgy,
                                        dev_phi,
+                                       dev_rhog,
                                        dev_rsd_l, dev_rsd_l,
-                                       K0, rhol,
+                                       K0, rhol, rhog0,
                                        vg_a, vg_m, vg_n,
                                        nx, ny, Lx, Ly);
     cudaError_t err = cudaGetLastError();
@@ -156,7 +157,7 @@ void Problem::Compute_Q_GPU()
                                            dev_Kx, dev_Ky,
                                            dev_Krlx, dev_Krly, dev_Krgx, dev_Krgy,
                                            dev_qlx, dev_qly, dev_qgx, dev_qgy,
-                                           rhol, rhog,
+                                           rhol, dev_rhog,
                                            mul, mug,
                                            g,
                                            nx, ny, dx, dy);
@@ -214,7 +215,7 @@ void Problem::Update_P_GPU()
                                           dev_qlx, dev_qly, dev_qgx, dev_qgy,
                                           dev_phi, dev_phi_old,
                                           dev_rsd_l, dev_rsd_g,
-                                          rhol, rhog,
+                                          rhol, rhog0,
                                           nx, ny, dx, dy, dt);
     cudaError_t err = cudaGetLastError();
     if(err != 0)
@@ -232,7 +233,7 @@ void Problem::Update_P_impl_GPU()
                                                dev_phi, dev_phi_old,
                                                dev_rsd_l, dev_rsd_g,
                                                mul, mug,
-                                               rhol, rhog,
+                                               rhol, rhog0,
                                                vg_a, vg_n, vg_m,
                                                nx, ny, dx, dy, dt);
     cudaError_t err = cudaGetLastError();
@@ -254,7 +255,7 @@ void Problem::Update_P_Poro_impl_GPU()
                                                dev_phi, dev_phi_old,
                                                dev_rsd_l, dev_rsd_g,
                                                mul, mug,
-                                               rhol, rhog,
+                                               rhol, dev_rhog,
                                                vg_a, vg_n, vg_m,
                                                c_phi,
                                                nx, ny, dx, dy, dt);
@@ -350,8 +351,8 @@ void Problem::H_Substep_GPU()
         Compute_Kr_GPU();
         Compute_Q_GPU();
         //Update_P_GPU();
-        Update_P_impl_GPU();
-        //Update_P_Poro_impl_GPU();
+        //Update_P_impl_GPU();
+        Update_P_Poro_impl_GPU();
         if(nit%1000 == 0 || nit == 1 || nit == 2){
             err_l_old = err_l;
             err_g_old = err_g;
@@ -416,6 +417,7 @@ void Problem::SolveOnGPU()
     cudaMalloc((void**)&dev_Krgy,   sizeof(DAT) * nx*(ny+1));
     cudaMalloc((void**)&dev_phi,    sizeof(DAT) * nx*ny);
     cudaMalloc((void**)&dev_phi_old,sizeof(DAT) * nx*ny);
+    cudaMalloc((void**)&dev_rhog,   sizeof(DAT) * nx*ny);
     cudaMalloc((void**)&dev_rsd_l,  sizeof(DAT) * nx*ny);
     cudaMalloc((void**)&dev_rsd_g,  sizeof(DAT) * nx*ny);
     cudaEventRecord(tbeg);
@@ -431,6 +433,7 @@ void Problem::SolveOnGPU()
     Kx      = new DAT[(nx+1)*ny];
     Ky      = new DAT[nx*(ny+1)];
     phi     = new DAT[nx*ny];
+    rhog    = new DAT[nx*ny];
     rsd_l   = new DAT[nx*ny];
     rsd_g   = new DAT[nx*ny];
 
@@ -498,6 +501,7 @@ void Problem::SolveOnGPU()
     cudaFree(dev_Krgy);
     cudaFree(dev_phi);
     cudaFree(dev_phi_old);
+    cudaFree(dev_rhog);
     cudaFree(dev_rsd_l);
     cudaFree(dev_rsd_g);
 
@@ -516,6 +520,7 @@ void Problem::SolveOnGPU()
     delete [] Kx;
     delete [] Ky;
     delete [] phi;
+    delete [] rhog;
     delete [] rsd_l;
     delete [] rsd_g;
 }
@@ -526,9 +531,10 @@ __global__ void kernel_SetIC(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Sl,
                              DAT *Krlx, DAT *Krly, DAT *Krgx, DAT *Krgy,
                              DAT *qlx, DAT *qly, DAT *qgx, DAT *qgy,
                              DAT *phi,
+                             DAT *rhog,
                              DAT *rsd_l, DAT *rsd_g,
                              const DAT K0,
-                             const DAT rhol,
+                             const DAT rhol, const DAT rhog0,
                              const DAT vg_a, const DAT vg_m, const DAT vg_n,
                              const int nx, const int ny,
                              const DAT Lx, const DAT Ly
@@ -561,6 +567,7 @@ __global__ void kernel_SetIC(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Sl,
         }
         Pl[i+j*nx] = Pg[i+j*nx] - Pcc;
         phi[i+j*nx] = 0.16;
+        rhog[i+j*nx] = rhog0;
         rsd_l[i+j*nx] = 0.0;
         rsd_g[i+j*nx] = 0.0;
     }
@@ -652,7 +659,7 @@ __global__ void kernel_Compute_Q(DAT *Pl, DAT *Pg,
                                  DAT *Kx, DAT *Ky,
                                  DAT *Krlx, DAT *Krly, DAT *Krgx, DAT *Krgy,
                                  DAT *qlx, DAT *qly, DAT *qgx, DAT *qgy,
-                                 const DAT rhol, const DAT rhog,
+                                 const DAT rhol, DAT *rhog,
                                  const DAT mul, const DAT mug,
                                  const DAT g,
                                  const int nx, const int ny,
@@ -663,14 +670,16 @@ __global__ void kernel_Compute_Q(DAT *Pl, DAT *Pg,
 
     if(i > 0 && i < nx && j >= 0 && j <= ny-1){ // Internal fluxes
         int ind = i+j*(nx+1);
-        qlx[ind] = -rhol*Kx[ind]/mul*Krlx[ind]*((Pl[i+j*nx]-Pl[i-1+j*nx])/dx);
-        qgx[ind] = -rhog*Kx[ind]/mug*Krgx[ind]*((Pg[i+j*nx]-Pg[i-1+j*nx])/dx);
+        DAT rhog_face = 0.5*(rhog[i-1+j*nx] + rhog[i-1+j*nx]);
+        qlx[ind] = -rhol     *Kx[ind]/mul*Krlx[ind]*((Pl[i+j*nx]-Pl[i-1+j*nx])/dx);
+        qgx[ind] = -rhog_face*Kx[ind]/mug*Krgx[ind]*((Pg[i+j*nx]-Pg[i-1+j*nx])/dx);
     }
 
     if(i >= 0 && i <= nx-1 && j > 0 && j < ny){ // Internal fluxes
         int ind = i+j*nx;
-        qly[ind] = -rhol*Ky[ind]/mul*Krly[ind]*((Pl[i+j*nx]-Pl[i+(j-1)*nx])/dy + 0*rhol*g);
-        qgy[ind] = -rhog*Ky[ind]/mug*Krgy[ind]*((Pg[i+j*nx]-Pg[i+(j-1)*nx])/dy + 0*rhog*g);
+        DAT rhog_face = 0.5*(rhog[i+j*nx] + rhog[i+(j-1)*nx]);
+        qly[ind] = -rhol     *Ky[ind]/mul*Krly[ind]*((Pl[i+j*nx]-Pl[i+(j-1)*nx])/dy + 0*rhol*g);
+        qgy[ind] = -rhog_face*Ky[ind]/mug*Krgy[ind]*((Pg[i+j*nx]-Pg[i+(j-1)*nx])/dy + 0*rhog_face*g);
     }
 
     // Inflow BC at the lower side
@@ -855,7 +864,7 @@ __global__ void kernel_Update_P_Poro_impl(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Pl_old
                                      DAT *phi, DAT *phi_old,
                                      DAT *rsd_l, DAT *rsd_g,
                                      const DAT mul, const DAT mug,
-                                     const DAT rhol, const DAT rhog,
+                                     const DAT rhol, DAT *rhog,
                                      const DAT vg_a, const DAT vg_n, const DAT vg_m,
                                      const DAT c_phi,
                                      const int nx, const int ny,
@@ -876,8 +885,8 @@ __global__ void kernel_Update_P_Poro_impl(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Pl_old
                    + (qgy[i+(j+1)*nx]   - qgy[i+j*nx])/dy;
 
 
-        rsd_l[ind] =  rhol * (phi[ind]*Sl[ind] - phi_old[ind]*Sl_old[ind])/dt + div_ql;
-        rsd_g[ind] = -rhog * (phi[ind]*Sl[ind] - phi_old[ind]*Sl_old[ind])/dt + div_qg;
+        rsd_l[ind] =  rhol      * (phi[ind]*Sl[ind] - phi_old[ind]*Sl_old[ind])/dt + div_ql;
+        rsd_g[ind] = -rhog[ind] * (phi[ind]*Sl[ind] - phi_old[ind]*Sl_old[ind])/dt + div_qg;
 
         DAT Krl = max(max(Krlx[i+j*(nx+1)], Krlx[i+j*(nx+1)]), max(Krly[i+j*nx], Krly[i+(j+1)*nx]));
         DAT Krg = max(max(Krgx[i+j*(nx+1)], Krgx[i+j*(nx+1)]), max(Krgy[i+j*nx], Krgy[i+(j+1)*nx]));
@@ -885,7 +894,7 @@ __global__ void kernel_Update_P_Poro_impl(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Pl_old
         // Determine pseudo-transient step
         DAT D;    // "Diffusion coefficient" for the cell
         DAT dtau; // Pseudo-transient step
-        D    = max(rhol,rhog)*1e-18/min(mul,mug) / PHI/rhol;// * max(Krl,Krg);
+        D    = max(rhol,rhog[ind])*1e-18/min(mul,mug) / PHI/rhol;// * max(Krl,Krg);
         dtau = min(dx*dx,dy*dy) / D / 4.1;
         dtau *= 1e-6;
 
@@ -927,7 +936,7 @@ __global__ void kernel_Update_P_Poro_impl(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Pl_old
         if(!found_dt)
             printf("Didn't find dt at cell %d %d!\n", i, j);
 
-        Pg[ind] = Pg[ind] + dtau * ((mnp1k - mn)/dt - div_qg/rhog);
+        Pg[ind] = Pg[ind] + dtau * ((mnp1k - mn)/dt - div_qg/rhog[ind]);
 
         DAT Pcc = rhol*9.81/vg_a * pow(pow(Sl[ind],-1./vg_m) - 1., 1./vg_n);
         if(isnan(Pcc) || isinf(Pcc)){
@@ -1092,6 +1101,7 @@ void Problem::SaveVTK_GPU(std::string path)
     cudaMemcpy(Kx,  dev_Kx, sizeof(DAT) * (nx+1)*ny, cudaMemcpyDeviceToHost);
     cudaMemcpy(Ky,  dev_Ky, sizeof(DAT) * nx*(ny+1), cudaMemcpyDeviceToHost);
     cudaMemcpy(phi, dev_phi, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToHost);
+    cudaMemcpy(rhog, dev_rhog, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToHost);
     cudaMemcpy(rsd_l,  dev_rsd_l, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToHost);
     cudaMemcpy(rsd_g,  dev_rsd_g, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToHost);
 
