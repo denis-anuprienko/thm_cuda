@@ -95,6 +95,7 @@ private:
     DAT *dev_phi;
     DAT *dev_phi_old;
     DAT *dev_rhog;
+    DAT *dev_rhog_old;
     DAT *dev_rsd_l;
     DAT *dev_rsd_g;
 

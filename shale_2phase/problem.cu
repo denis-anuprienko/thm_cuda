@@ -78,7 +78,7 @@ __global__ void kernel_Update_P_Poro_impl(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Pl_old
                                      DAT *phi, DAT *phi_old,
                                      DAT *rsd_l, DAT *rsd_g,
                                      const DAT mul, const DAT mug,
-                                     const DAT rhol, DAT *rhog,
+                                     const DAT rhol, DAT *rhog, DAT *rhog_old,
                                      const DAT vg_a, const DAT vg_n, const DAT vg_m,
                                      const DAT c_phi,
                                      const int nx, const int ny,
@@ -255,7 +255,7 @@ void Problem::Update_P_Poro_impl_GPU()
                                                dev_phi, dev_phi_old,
                                                dev_rsd_l, dev_rsd_g,
                                                mul, mug,
-                                               rhol, dev_rhog,
+                                               rhol, dev_rhog, dev_rhog_old,
                                                vg_a, vg_n, vg_m,
                                                c_phi,
                                                nx, ny, dx, dy, dt);
@@ -398,28 +398,29 @@ void Problem::SolveOnGPU()
     cudaEventCreate(&tbeg);
     cudaEventCreate(&tend);
     cudaEventRecord(tbeg);
-    cudaMalloc((void**)&dev_Pl,     sizeof(DAT) * nx*ny);
-    cudaMalloc((void**)&dev_Pl_old, sizeof(DAT) * nx*ny);
-    cudaMalloc((void**)&dev_Pg,     sizeof(DAT) * nx*ny);
-    cudaMalloc((void**)&dev_Pg_old, sizeof(DAT) * nx*ny);
-    cudaMalloc((void**)&dev_Pc,     sizeof(DAT) * nx*ny);
-    cudaMalloc((void**)&dev_Sl,     sizeof(DAT) * nx*ny);
-    cudaMalloc((void**)&dev_Sl_old, sizeof(DAT) * nx*ny);
-    cudaMalloc((void**)&dev_qlx,    sizeof(DAT) * (nx+1)*ny);
-    cudaMalloc((void**)&dev_qly,    sizeof(DAT) * nx*(ny+1));
-    cudaMalloc((void**)&dev_qgx,    sizeof(DAT) * (nx+1)*ny);
-    cudaMalloc((void**)&dev_qgy,    sizeof(DAT) * nx*(ny+1));
-    cudaMalloc((void**)&dev_Kx,     sizeof(DAT) * (nx+1)*ny);
-    cudaMalloc((void**)&dev_Ky,     sizeof(DAT) * nx*(ny+1));
-    cudaMalloc((void**)&dev_Krlx,   sizeof(DAT) * (nx+1)*ny);
-    cudaMalloc((void**)&dev_Krly,   sizeof(DAT) * nx*(ny+1));
-    cudaMalloc((void**)&dev_Krgx,   sizeof(DAT) * (nx+1)*ny);
-    cudaMalloc((void**)&dev_Krgy,   sizeof(DAT) * nx*(ny+1));
-    cudaMalloc((void**)&dev_phi,    sizeof(DAT) * nx*ny);
-    cudaMalloc((void**)&dev_phi_old,sizeof(DAT) * nx*ny);
-    cudaMalloc((void**)&dev_rhog,   sizeof(DAT) * nx*ny);
-    cudaMalloc((void**)&dev_rsd_l,  sizeof(DAT) * nx*ny);
-    cudaMalloc((void**)&dev_rsd_g,  sizeof(DAT) * nx*ny);
+    cudaMalloc((void**)&dev_Pl,       sizeof(DAT) * nx*ny);
+    cudaMalloc((void**)&dev_Pl_old,   sizeof(DAT) * nx*ny);
+    cudaMalloc((void**)&dev_Pg,       sizeof(DAT) * nx*ny);
+    cudaMalloc((void**)&dev_Pg_old,   sizeof(DAT) * nx*ny);
+    cudaMalloc((void**)&dev_Pc,       sizeof(DAT) * nx*ny);
+    cudaMalloc((void**)&dev_Sl,       sizeof(DAT) * nx*ny);
+    cudaMalloc((void**)&dev_Sl_old,   sizeof(DAT) * nx*ny);
+    cudaMalloc((void**)&dev_qlx,      sizeof(DAT) * (nx+1)*ny);
+    cudaMalloc((void**)&dev_qly,      sizeof(DAT) * nx*(ny+1));
+    cudaMalloc((void**)&dev_qgx,      sizeof(DAT) * (nx+1)*ny);
+    cudaMalloc((void**)&dev_qgy,      sizeof(DAT) * nx*(ny+1));
+    cudaMalloc((void**)&dev_Kx,       sizeof(DAT) * (nx+1)*ny);
+    cudaMalloc((void**)&dev_Ky,       sizeof(DAT) * nx*(ny+1));
+    cudaMalloc((void**)&dev_Krlx,     sizeof(DAT) * (nx+1)*ny);
+    cudaMalloc((void**)&dev_Krly,     sizeof(DAT) * nx*(ny+1));
+    cudaMalloc((void**)&dev_Krgx,     sizeof(DAT) * (nx+1)*ny);
+    cudaMalloc((void**)&dev_Krgy,     sizeof(DAT) * nx*(ny+1));
+    cudaMalloc((void**)&dev_phi,      sizeof(DAT) * nx*ny);
+    cudaMalloc((void**)&dev_phi_old,  sizeof(DAT) * nx*ny);
+    cudaMalloc((void**)&dev_rhog,     sizeof(DAT) * nx*ny);
+    cudaMalloc((void**)&dev_rhog_old, sizeof(DAT) * nx*ny);
+    cudaMalloc((void**)&dev_rsd_l,    sizeof(DAT) * nx*ny);
+    cudaMalloc((void**)&dev_rsd_g,    sizeof(DAT) * nx*ny);
     cudaEventRecord(tbeg);
 
     printf("Allocated on GPU\n");
@@ -476,6 +477,7 @@ void Problem::SolveOnGPU()
         cudaMemcpy(dev_Pg_old,  dev_Pg,  sizeof(DAT) * nx*ny, cudaMemcpyDeviceToDevice);
         cudaMemcpy(dev_Sl_old,  dev_Sl,  sizeof(DAT) * nx*ny, cudaMemcpyDeviceToDevice);
         cudaMemcpy(dev_phi_old, dev_phi, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToDevice);
+        cudaMemcpy(dev_rhog_old, dev_rhog, sizeof(DAT) * nx*ny, cudaMemcpyDeviceToDevice);
         H_Substep_GPU();
         string name = respath + "/sol" + to_string(it) + ".vtk";
         SaveVTK_GPU(name);
@@ -502,6 +504,7 @@ void Problem::SolveOnGPU()
     cudaFree(dev_phi);
     cudaFree(dev_phi_old);
     cudaFree(dev_rhog);
+    cudaFree(dev_rhog_old);
     cudaFree(dev_rsd_l);
     cudaFree(dev_rsd_g);
 
@@ -866,7 +869,7 @@ __global__ void kernel_Update_P_Poro_impl(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Pl_old
                                      DAT *phi, DAT *phi_old,
                                      DAT *rsd_l, DAT *rsd_g,
                                      const DAT mul, const DAT mug,
-                                     const DAT rhol, DAT *rhog,
+                                     const DAT rhol, DAT *rhog, DAT *rhog_old,
                                      const DAT vg_a, const DAT vg_n, const DAT vg_m,
                                      const DAT c_phi,
                                      const int nx, const int ny,
