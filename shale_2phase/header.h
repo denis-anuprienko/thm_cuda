@@ -42,11 +42,11 @@ private:
 
 
     // Numerics
-    const int nx      = 64;          // number of cells
+    const int nx      = 256;          // number of cells
     const int ny      = nx;
     const DAT dx      = Lx/nx;        // cell size
     const DAT dy      = Ly/ny;
-    const DAT niter   = 20e4;        // number of PT steps
+    const DAT niter   = 2e4;        // number of PT steps
     const DAT eps_a_h = 1e-10;         // absolute tolerance, flow
     const DAT eps_r_h = 1e-5;
 

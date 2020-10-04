@@ -20,7 +20,7 @@ __global__ void kernel_SetIC(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Sl,
                              DAT *qlx, DAT *qly, DAT *qgx, DAT *qgy,
                              DAT *phi,
                              DAT *rsd_l, DAT *rsd_g,
-                             const DAT K0,
+                             const DAT K0, const DAT rhol, const DAT vg_a, const DAT vg_m, const DAT vg_n,
                              const int nx, const int ny, const DAT Lx, const DAT Ly);
 
 
@@ -53,7 +53,7 @@ __global__ void kernel_Compute_Q(DAT *Pl, DAT *Pg, DAT *Sl,
 __global__ void kernel_Update_P(DAT *Pl, DAT *Pg,
                                 DAT *Sl, DAT *Sl_old,
                                 DAT *qlx, DAT *qly, DAT *qgx, DAT *qgy,
-                                DAT *phi, double *phi_old,
+                                DAT *phi, DAT *phi_old,
                                 DAT *rsd_l, DAT *rsd_g,
                                 const DAT rhol, const DAT rhog,
                                 const int nx, const int ny,
@@ -137,7 +137,8 @@ void Problem::SetIC_GPU()
                                        dev_qlx, dev_qly, dev_qgx, dev_qgy,
                                        dev_phi,
                                        dev_rsd_l, dev_rsd_l,
-                                       K0,
+                                       K0, rhol,
+                                       vg_a, vg_m, vg_n,
                                        nx, ny, Lx, Ly);
     cudaError_t err = cudaGetLastError();
     if(err != 0)
@@ -259,7 +260,7 @@ void Problem::Update_P_Poro_impl_GPU()
                                                nx, ny, dx, dy, dt);
     cudaError_t err = cudaGetLastError();
     if(err != 0){
-        printf("Error %x at P_impl\n", err);
+        printf("Error %x at P_Poro_impl\n", err);
         fflush(stdout);
         exit(0);
     }
@@ -345,12 +346,12 @@ void Problem::H_Substep_GPU()
         //printf("iter %d\n", nit);
         fflush(stdout);
         //Compute_K_GPU();
-        Compute_S_GPU();
+        //Compute_S_GPU();
         Compute_Kr_GPU();
         Compute_Q_GPU();
         //Update_P_GPU();
-        //Update_P_impl_GPU();
-        Update_P_Poro_impl_GPU();
+        Update_P_impl_GPU();
+        //Update_P_Poro_impl_GPU();
         if(nit%1000 == 0 || nit == 1 || nit == 2){
             err_l_old = err_l;
             err_g_old = err_g;
@@ -456,7 +457,7 @@ void Problem::SolveOnGPU()
 
 //    for(int i = 0; i < nx; i++){
 //        for(int j = 0; j < nx; j++){
-//            phi[i+j*nx] = (0.1 + (double) rand() / (RAND_MAX))*0.16;
+//            phi[i+j*nx] = (0.1 + (DAT) rand() / (RAND_MAX))*0.16;
 //        }
 //    }
 //    cudaMemcpy(dev_phi, phi, sizeof(DAT)*nx*ny, cudaMemcpyHostToDevice);
@@ -527,6 +528,8 @@ __global__ void kernel_SetIC(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Sl,
                              DAT *phi,
                              DAT *rsd_l, DAT *rsd_g,
                              const DAT K0,
+                             const DAT rhol,
+                             const DAT vg_a, const DAT vg_m, const DAT vg_n,
                              const int nx, const int ny,
                              const DAT Lx, const DAT Ly
                              )
@@ -540,14 +543,23 @@ __global__ void kernel_SetIC(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Sl,
     DAT x = (i+0.5)*dx, y = (j+0.5)*dy;
     // Cell variables
     if(i >= 0 && i < nx && j >= 0 && j < ny){
-        if(sqrt((Lx/2.0-x)*(Lx/2.0-x) + (Ly/2.0-y)*(Ly/2.0-y)) < 0.001)
-            Pl[i+j*nx] = 11e6;//8.1e6;//11e6;
-        else
-            Pl[i+j*nx] = 8e6;
+        if(sqrt((Lx/2.0-x)*(Lx/2.0-x) + (Ly/2.0-y)*(Ly/2.0-y)) < 0.001){
+            //Pl[i+j*nx] = 11e6;//8.1e6;//11e6;
+            Sl[i+j*nx] = 1.0;
+        }
+        else{
+            //Pl[i+j*nx] = 8e6;
+            Sl[i+j*nx] = 8.9e-4;
+        }
 
         //Pl[i+j*nx] = 8e6;
         Pg[i+j*nx] = 10e6;
-        Pc[i+j*nx] = Pg[i+j*nx] - Pl[i+j*nx];
+        DAT Pcc = rhol*9.81/vg_a * pow(pow(Sl[i+j*nx],-1./vg_m) - 1., 1./vg_n);
+        if(isnan(Pcc) || isinf(Pcc)){
+            printf("Bad Pcc at cell (%d %d), Sl = %e\n", i, j, Sl[i+j*nx]);
+            __trap();
+        }
+        Pl[i+j*nx] = Pg[i+j*nx] - Pcc;
         phi[i+j*nx] = 0.16;
         rsd_l[i+j*nx] = 0.0;
         rsd_g[i+j*nx] = 0.0;
@@ -880,27 +892,42 @@ __global__ void kernel_Update_P_Poro_impl(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Pl_old
         DAT Slp = Sl[ind];
 
         DAT mn = (Sl_old[ind]*phi_old[ind]); //m^n = volumetric content (S*phi) at the previous time step
+        DAT mnp1k; // v.cont. at previous iteration
 
+        bool found_dt = false;
         for(; dtau > 1e-18; dtau *= 0.1){
 
-            DAT mnp1k = Sl[ind]*phi[ind]; // v.cont. at previous iteration
+            mnp1k = Sl[ind]*phi[ind];
 
             // Try update for vol.cont.
             mnp1k = mnp1k/dtau + mn/dt - div_ql/rhol;
             mnp1k = mnp1k/(1./dt + 1./dtau);
+
+            // Now, update porosity using values at previous, k-th iteration
+            DAT Pf     = Sl[ind]    *Pl[ind]     + (1.0-Sl[ind])    *Pg[ind];
+            DAT Pf_old = Sl_old[ind]*Pl_old[ind] + (1.0-Sl_old[ind])*Pg_old[ind];
+
+            phi[ind] = phi_old[ind]/(1.0 - c_phi*(Pf-Pf_old));
+            //phi[ind] = phi_old[ind] + c_phi*(Pf-Pf_old);
+
+            // Having porosity obtained, we can get saturation from vol.cont.
             Sl[ind] = mnp1k/phi[ind];
+
             if(Sl[ind] > 1.0 || Sl[ind] < 0.0 || isinf(Sl[ind]) || isnan(Sl[ind])){
                 //printf("Bad Sl = %e at cell (%d %d), Slp = %e, Sl_old = %e, divq = %e, dtau = %e\n", Sl[ind], i, j, Slp, Sl_old[ind], div_ql/PHI/rhol, dtau);
                 Sl[ind] = Slp;
             }
             else{
                 Sl[ind] = mnp1k/phi[ind];
+                found_dt = true;
                 break;
             }
 
         }
+        if(!found_dt)
+            printf("Didn't find dt at cell %d %d!\n", i, j);
 
-        Pg[ind] = Pg[ind] + dtau * ((Sl[ind] - Sl_old[ind])/dt - div_qg/phi[ind]/rhog);
+        Pg[ind] = Pg[ind] + dtau * ((mnp1k - mn)/dt - div_qg/rhog);
 
         DAT Pcc = rhol*9.81/vg_a * pow(pow(Sl[ind],-1./vg_m) - 1., 1./vg_n);
         if(isnan(Pcc) || isinf(Pcc)){
