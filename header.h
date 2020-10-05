@@ -99,6 +99,7 @@ private:
     void Compute_Kr_GPU();    // Compute relative permeability
     void Compute_Q_GPU();     // Compute fluid fluxes using Kr
     void Update_Pw_GPU();     // Compute residual and update water pressure
+    void Update_Sw_GPU();     // Compute residual and update saturation=>get pressure
     void Update_V_GPU();      // Update solid
     void Update_U_GPU();      // Update solid displacement (includes damping of V!)
     void Update_Stress_GPU(); // Update stress and compute residual

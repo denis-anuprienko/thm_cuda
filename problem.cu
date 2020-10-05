@@ -30,6 +30,11 @@ __global__ void kernel_Update_Pw(DAT *rsd, DAT *Pw, DAT *Sw, DAT *Pw_old, DAT *S
                                  const DAT dx, const DAT dy, const DAT dt,
                                  const DAT phi, const DAT rhow, const DAT sstor);
 
+__global__ void kernel_Update_Sw(DAT *rsd, DAT *Pw, DAT *Sw, DAT *Pw_old, DAT *Sw_old,
+                                 DAT *qx, DAT *qy, DAT *Ux, DAT *Uy, DAT *Ux_old, DAT *Uy_old, const int nx, const int ny,
+                                 const DAT dx, const DAT dy, const DAT dt,
+                                 const DAT phi, const DAT rhow, const DAT sstor);
+
 __global__ void kernel_Update_V(DAT *Vx, DAT *Vy, DAT *Txx, DAT *Tyy, DAT *Txy, DAT *Pw, DAT *Sw,
                                 const int nx, const int ny, const DAT dx, const DAT dy,
                                 const DAT rho_s, const DAT g);
@@ -158,6 +163,20 @@ void Problem::Update_Pw_GPU()
     cudaError_t err = cudaGetLastError();
     if(err != 0)
         printf("Error %x at Pw\n", err);
+}
+
+void Problem::Update_Sw_GPU()
+{
+    dim3 dimBlock(BLOCK_DIM, BLOCK_DIM);
+    dim3 dimGrid((nx+dimBlock.x-1)/dimBlock.x, (ny+dimBlock.y-1)/dimBlock.y);
+    kernel_Update_Sw<<<dimGrid,dimBlock>>>(dev_rsd_h, dev_Pw, dev_Sw, dev_Pw_old, dev_Sw_old,
+                                           dev_qx, dev_qy,
+                                           dev_Ux, dev_Uy, dev_Ux_old, dev_Uy_old,
+                                           nx, ny, dx, dy, dt,
+                                           phi, rhow, sstor);
+    cudaError_t err = cudaGetLastError();
+    if(err != 0)
+        printf("Error %x at Sw\n", err);
 }
 
 void Problem::M_Substep_GPU()
@@ -644,6 +663,27 @@ __global__ void kernel_Update_Pw(DAT *rsd, DAT *Pw, DAT *Sw, DAT *Pw_old, DAT *S
         //    printf("rsd = %lf\n", rsd[ind]);
         //    Pw[ind] = 1e11;
         //Pw[ind] = 1e11;
+    }
+}
+
+__global__ void kernel_Update_Sw(DAT *rsd, DAT *Pw, DAT *Sw, DAT *Pw_old, DAT *Sw_old,
+                                 DAT *qx, DAT *qy,
+                                 DAT *Ux, DAT *Uy, DAT *Ux_old, DAT *Uy_old,
+                                 const int nx, const int ny,
+                                 const DAT dx,  const DAT dy,   const DAT dt,
+                                 const DAT phi, const DAT rhow, const DAT sstor)
+{
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    int j = blockDim.y * blockIdx.y + threadIdx.y;
+
+
+    if(i >= 0 && i < nx && j >= 0 && j < ny){
+        int ind = i+nx*j;
+
+        DAT divU     = (Ux[i+1+j*(nx+1)]     - Ux[i+j*(nx+1)])/dx
+                     + (Uy[i+(j+1)*nx] -       Uy[i+j*nx])/dy;
+        DAT divU_old = (Ux_old[i+1+j*(nx+1)] - Ux_old[i+j*(nx+1)])/dx
+                     + (Uy_old[i+(j+1)*nx]    - Uy_old[i+j*nx])/dy;
     }
 }
 
