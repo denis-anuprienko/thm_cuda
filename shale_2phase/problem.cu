@@ -78,7 +78,7 @@ __global__ void kernel_Update_P_Poro_impl(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Pl_old
                                      DAT *phi, DAT *phi_old,
                                      DAT *rsd_l, DAT *rsd_g,
                                      const DAT mul, const DAT mug,
-                                     const DAT rhol, DAT *rhog, DAT *rhog_old,
+                                     const DAT rhol, const DAT rhog0, DAT *rhog, DAT *rhog_old,
                                      const DAT vg_a, const DAT vg_n, const DAT vg_m,
                                      const DAT c_phi,
                                      const int nx, const int ny,
@@ -170,9 +170,9 @@ void Problem::Compute_K_GPU()
 {
     dim3 dimBlock(BLOCK_DIM, BLOCK_DIM);
     dim3 dimGrid((nx+1+dimBlock.x-1)/dimBlock.x, (ny+1+dimBlock.y-1)/dimBlock.y);
-    //kernel_Compute_K<<<dimGrid,dimBlock>>>(dev_Pl, dev_Kx, dev_Ky,
-    //                                       K0, gamma, Pt, P0,
-    //                                       nx, ny);
+    kernel_Compute_K<<<dimGrid,dimBlock>>>(dev_Pl, dev_Kx, dev_Ky,
+                                           K0, gamma, Pt, P0,
+                                           nx, ny);
     cudaError_t err = cudaGetLastError();
     if(err != 0)
         printf("Error %x at K\n", err);
@@ -255,7 +255,7 @@ void Problem::Update_P_Poro_impl_GPU()
                                                dev_phi, dev_phi_old,
                                                dev_rsd_l, dev_rsd_g,
                                                mul, mug,
-                                               rhol, dev_rhog, dev_rhog_old,
+                                               rhol, rhog0, dev_rhog, dev_rhog_old,
                                                vg_a, vg_n, vg_m,
                                                c_phi,
                                                nx, ny, dx, dy, dt);
@@ -289,7 +289,7 @@ void Problem::Count_Mass_GPU()
     dim3 dimBlock(BLOCK_DIM, BLOCK_DIM);
     dim3 dimGrid((nx+dimBlock.x-1)/dimBlock.x, (ny+dimBlock.y-1)/dimBlock.y);
 
-    DAT *dev_mass; // vector that stores liquid mass in cells
+    DAT *dev_mass; // vector that stores mass in cells
     cudaMalloc((void**)&dev_mass, sizeof(DAT) * nx*ny);
 
     kernel_Multiply_Cell_Data<<<dimGrid,dimBlock>>>(dev_Sl, dev_phi, dev_mass, nx, ny);
@@ -346,14 +346,14 @@ void Problem::H_Substep_GPU()
     for(int nit = 1; nit <= niter; nit++){
         //printf("iter %d\n", nit);
         fflush(stdout);
-        //Compute_K_GPU();
+        Compute_K_GPU();
         //Compute_S_GPU();
         Compute_Kr_GPU();
         Compute_Q_GPU();
         //Update_P_GPU();
         //Update_P_impl_GPU();
         Update_P_Poro_impl_GPU();
-        if(nit%1000 == 0 || nit == 1 || nit == 2){
+        if(nit%10000 == 0 || nit == 1 || nit == 2){
             err_l_old = err_l;
             err_g_old = err_g;
             FindMax(dev_rsd_l, &err_l, nx*ny);
@@ -371,7 +371,7 @@ void Problem::H_Substep_GPU()
                 flog << "Converged in " << nit << endl;
                 break;
             }
-            if(err_l < eps_r_h * err_l_0 || err_g < eps_r_h * err_g_0){
+            if(err_l < eps_r_h * err_l_0 && (err_g < eps_r_h * err_g_0 || err_g_0 < 1e-10)){
                 printf("Flow converged by rel.crit. in %d it.: r_l = %e, r_g = %e\n", nit, err_l, err_g);
                 fflush(stdout);
                 flog << "Converged in " << nit << endl;
@@ -556,7 +556,7 @@ __global__ void kernel_SetIC(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Sl,
 
         if(sqrt((Lx/2.0-x)*(Lx/2.0-x) + (Ly/2.0-y)*(Ly/2.0-y)) < 0.001){
             //Pl[ind] = 11e6;//8.1e6;//11e6;
-            Sl[ind] = 1.0;
+            Sl[ind] = 1;//8.9e-4;//1.0;
         }
         else{
             //Pl[i+j*nx] = 8e6;
@@ -572,7 +572,7 @@ __global__ void kernel_SetIC(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Sl,
         }
         Pl[ind] = Pg[ind] - Pcc;
         phi[ind] = 0.16;
-        rhog[ind] = rhog0 * (1. + Pg[ind]/1e5);
+        rhog[ind] = rhog0;// * (1. + Pg[ind]/1e5);
         rsd_l[ind] = 0.0;
         rsd_g[ind] = 0.0;
     }
@@ -869,7 +869,7 @@ __global__ void kernel_Update_P_Poro_impl(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Pl_old
                                      DAT *phi, DAT *phi_old,
                                      DAT *rsd_l, DAT *rsd_g,
                                      const DAT mul, const DAT mug,
-                                     const DAT rhol, DAT *rhog, DAT *rhog_old,
+                                     const DAT rhol, const DAT rhog0, DAT *rhog, DAT *rhog_old,
                                      const DAT vg_a, const DAT vg_n, const DAT vg_m,
                                      const DAT c_phi,
                                      const int nx, const int ny,
@@ -891,7 +891,7 @@ __global__ void kernel_Update_P_Poro_impl(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Pl_old
 
 
         rsd_l[ind] =  rhol      * (phi[ind]*Sl[ind] - phi_old[ind]*Sl_old[ind])/dt + div_ql;
-        rsd_g[ind] = -rhog[ind] * (phi[ind]*Sl[ind] - phi_old[ind]*Sl_old[ind])/dt + div_qg;
+        rsd_g[ind] = -(rhog[ind]*phi[ind]*Sl[ind] - rhog_old[ind]*phi_old[ind]*Sl_old[ind])/dt + div_qg;
 
         DAT Krl = max(max(Krlx[i+j*(nx+1)], Krlx[i+j*(nx+1)]), max(Krly[i+j*nx], Krly[i+(j+1)*nx]));
         DAT Krg = max(max(Krgx[i+j*(nx+1)], Krgx[i+j*(nx+1)]), max(Krgy[i+j*nx], Krgy[i+(j+1)*nx]));
@@ -941,7 +941,9 @@ __global__ void kernel_Update_P_Poro_impl(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Pl_old
         if(!found_dt)
             printf("Didn't find dt at cell %d %d!\n", i, j);
 
-        Pg[ind] = Pg[ind] + dtau * ((mnp1k - mn)/dt - div_qg/rhog[ind]);
+        Pg[ind] = Pg[ind] + dtau * ((rhog[ind]*mnp1k - rhog_old[ind]*mn)/dt - div_qg);
+
+        rhog[ind] = rhog0;// * (1. + Pg[ind]/1e5);
 
         DAT Pcc = rhol*9.81/vg_a * pow(pow(Sl[ind],-1./vg_m) - 1., 1./vg_n);
         if(isnan(Pcc) || isinf(Pcc)){
