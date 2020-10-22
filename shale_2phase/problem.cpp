@@ -41,13 +41,13 @@ void Problem::SaveVTK(string path)
 
     out << "CELL_DATA " << nx * ny << endl;
 
-//    out << "SCALARS Fluid_Pressure double" << endl;
-//    out << "LOOKUP_TABLE default" << endl;
-//    for(int j = 0; j < ny; j++){
-//        for(int i = 0; i < nx; i++){
-//            out << Sl[i+j*nx]*Pl[i+j*nx] + (1.0-Sl[i+j*nx])*Pg[i+j*nx] << endl;
-//        }
-//    }
+    out << "SCALARS Fluid_Pressure double" << endl;
+    out << "LOOKUP_TABLE default" << endl;
+    for(int j = 0; j < ny; j++){
+        for(int i = 0; i < nx; i++){
+            out << Sl[i+j*nx]*Pl[i+j*nx] + (1.0-Sl[i+j*nx])*Pg[i+j*nx] << endl;
+        }
+    }
 
     out << "SCALARS Liquid_Pressure double" << endl;
     out << "LOOKUP_TABLE default" << endl;
@@ -73,6 +73,14 @@ void Problem::SaveVTK(string path)
         }
     }
 
+    out << "SCALARS Gas_Density double" << endl;
+    out << "LOOKUP_TABLE default" << endl;
+    for(int j = 0; j < ny; j++){
+        for(int i = 0; i < nx; i++){
+            out << rhog[i+j*nx] << endl;
+        }
+    }
+
 //    out << "SCALARS Gas_Saturation double" << endl;
 //    out << "LOOKUP_TABLE default" << endl;
 //    for(int j = 0; j < ny; j++){
@@ -89,13 +97,13 @@ void Problem::SaveVTK(string path)
         }
     }
 
-//    out << "SCALARS Porosity double" << endl;
-//    out << "LOOKUP_TABLE default" << endl;
-//    for(int j = 0; j < ny; j++){
-//        for(int i = 0; i < nx; i++){
-//            out << phi[i+j*nx] << endl;
-//        }
-//    }
+    out << "SCALARS Porosity double" << endl;
+    out << "LOOKUP_TABLE default" << endl;
+    for(int j = 0; j < ny; j++){
+        for(int i = 0; i < nx; i++){
+            out << phi[i+j*nx] << endl;
+        }
+    }
 
 //    out << "SCALARS Cell_Number double" << endl;
 //    out << "LOOKUP_TABLE default" << endl;
@@ -105,21 +113,21 @@ void Problem::SaveVTK(string path)
 //        }
 //    }
 
-//    out << "VECTORS Intrinsic_Permeability double" << endl;
-//    for(int j = 0; j < ny; j++){
-//        for(int i = 0; i < nx; i++){
-//            out << 0.5*(Kx[i+j*(nx+1)]+Kx[i+1+j*(nx+1)]) << " " <<
-//                   0.5*(Ky[i+(j+1)*nx]+Ky[i+j*nx]) << " 0.0" << endl;
-//        }
-//    }
+    out << "VECTORS Intrinsic_Permeability double" << endl;
+    for(int j = 0; j < ny; j++){
+        for(int i = 0; i < nx; i++){
+            out << 0.5*(Kx[i+j*(nx+1)]+Kx[i+1+j*(nx+1)]) << " " <<
+                   0.5*(Ky[i+(j+1)*nx]+Ky[i+j*nx]) << " 0.0" << endl;
+        }
+    }
 
-//    out << "VECTORS Liquid_Flux double" << endl;
-//    for(int j = 0; j < ny; j++){
-//        for(int i = 0; i < nx; i++){
-//            out << 0.5*(qlx[i+j*(nx+1)]+qlx[i+1+j*(nx+1)]) << " " <<
-//                   0.5*(qly[i+(j+1)*nx]+qly[i+j*nx]) << " 0.0" << endl;
-//        }
-//    }
+    out << "VECTORS Liquid_Flux double" << endl;
+    for(int j = 0; j < ny; j++){
+        for(int i = 0; i < nx; i++){
+            out << 0.5*(qlx[i+j*(nx+1)]+qlx[i+1+j*(nx+1)]) << " " <<
+                   0.5*(qly[i+(j+1)*nx]+qly[i+j*nx]) << " 0.0" << endl;
+        }
+    }
 
     out << "SCALARS Rl double" << endl;
     out << "LOOKUP_TABLE default" << endl;

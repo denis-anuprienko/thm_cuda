@@ -24,10 +24,10 @@ private:
     const DAT Lx      = 0.012;        // Domain length, m
     const DAT Ly      = 0.012;
     const DAT K0      = 1e-18;        // Initial intrinsic permeability, m^2
-    const DAT mul     = 1.0e-3;       // Liquid dynamic viscoity, Pa*s
-    const DAT mug     = 1.0e-3;       // Gas    dynamic viscoity, Pa*s
+    const DAT mul     = 1.e-3;       // Liquid dynamic viscoity, Pa*s
+    const DAT mug     = 1.e-3;       // Gas    dynamic viscoity, Pa*s
     const DAT rhol    = 7.0e2;        // Liquid density, kg/m^3
-    const DAT rhog    = 7.0e2;        // Gas    density, kg/m^3
+    const DAT rhog0   = 7.0e2;        // Gas    density, kg/m^3
     const DAT rhos    = 2.0e3;        // Solid density, kg/m^3
     const DAT g       = 9.81;         // m/s^2
     const DAT c_f     = 1./22e9;//4.5e-4*1e-6; // parameter from van Noort and Yarushina, 1/Pa
@@ -42,16 +42,16 @@ private:
 
 
     // Numerics
-    const int nx      = 32;          // number of cells
-    const int ny      = nx;
+    const int nx      = 64;          // number of cells
+    const int ny      = 64;
     const DAT dx      = Lx/nx;        // cell size
     const DAT dy      = Ly/ny;
-    const DAT niter   = 150e4;        // number of PT steps
+    const DAT niter   = 10e4;        // number of PT steps
     const DAT eps_a_h = 1e-10;         // absolute tolerance, flow
-    const DAT eps_r_h = 1e-5;
+    const DAT eps_r_h = 5e-6;
 
     const DAT dt        = 1e3;//220*60/10;    // Seconds
-    const DAT Time      = dt*1;
+    const DAT Time      = dt*10;
     const DAT nt        = Time / dt;
 
     bool do_mech   = false;
@@ -74,6 +74,7 @@ private:
     DAT *qgx, *qgy;   // Gas    fluxes
     DAT *Kx, *Ky;     // Pressure-dependent intrinsic permeabilities
     DAT *phi;         // Porosity
+    DAT *rhog;        // Gas density
     DAT *rsd_l;       // Residual of equation for liquid
     DAT *rsd_g;       // Residual of equation for gas
     DAT mass_l;       // Liquid mass (for conservation checking)
@@ -93,6 +94,8 @@ private:
     DAT *dev_Kx, *dev_Ky;
     DAT *dev_phi;
     DAT *dev_phi_old;
+    DAT *dev_rhog;
+    DAT *dev_rhog_old;
     DAT *dev_rsd_l;
     DAT *dev_rsd_g;
 
@@ -100,17 +103,18 @@ private:
     std::ofstream flog;
 
     // Functions calculating unknowns over whole mesh
-    void H_Substep_GPU();     // Hydro substep
-    void M_Substep_GPU();     // Mechanical substep
-    void SetIC_GPU();         // Set initial conditions
-    void Compute_K_GPU();     // Compute intrinsic permeability
-    void Compute_Kr_GPU();    // Compute relative  permeability
-    void Compute_S_GPU();     // Compute liquid saturation (no calculation for gas needed)
-    void Compute_Q_GPU();     // Compute fluid fluxes using K
-    void Update_P_GPU();      // Update pressure and compute residuals
-    void Update_P_impl_GPU(); // "Implicitly" update pressure and compute residuals
-    void Update_Poro_GPU();   // Update porosity based on new fluid pressure values
-    void Count_Mass_GPU();    // Count mass (of liquid) to check mass conservation
+    void H_Substep_GPU();          // Hydro substep
+    void M_Substep_GPU();          // Mechanical substep
+    void SetIC_GPU();              // Set initial conditions
+    void Compute_K_GPU();          // Compute intrinsic permeability
+    void Compute_Kr_GPU();         // Compute relative  permeability
+    void Compute_S_GPU();          // Compute liquid saturation (no calculation for gas needed)
+    void Compute_Q_GPU();          // Compute fluid fluxes using K
+    void Update_P_GPU();           // Update pressure and compute residuals
+    void Update_P_impl_GPU();      // "Implicitly" update pressure and compute residuals
+    void Update_P_Poro_impl_GPU(); // "Implicitly" update pressure, porosity and compute residuals
+    void Update_Poro_GPU();        // Update porosity based on new fluid pressure values
+    void Count_Mass_GPU();         // Count mass (of liquid) to check mass conservation
 
 public:
     Problem(){ Init(); }
