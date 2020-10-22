@@ -10,7 +10,7 @@ using namespace std;
 
 // Flux is 9.4e g/h = 9.4e-3 kg/h = 9.4e-6/60/60 kg/s
 
-#define FLUX 0//9.4e-3/60/60/0.012//0.012  //9.4e-3/60/60/700 * 10 // kg/m^2/s
+#define FLUX 0//3.415127e-05//9.4e-3/60/60/0.012//0.012  //9.4e-3/60/60/700 * 10 // kg/m^2/s
 
 void FindMax(DAT *dev_arr, DAT *max, int size);
 
@@ -328,6 +328,7 @@ void Problem::Count_Mass_GPU()
                                                                 change_prcnt,
                                                                 change_expct,
                                                                 change - change_expct);
+    printf("Ratios: %e %e dx = %e dy = %e\n", change/change_expct, change_expct/change, dx, dy);
 
     flog << "Mass change is " << mass_new-mass_old << " kg (" << (mass_new-mass_old)/mass_old*100 << "%)" << endl;
     mass_l = mass_new;
@@ -371,7 +372,7 @@ void Problem::H_Substep_GPU()
                 flog << "Converged in " << nit << endl;
                 break;
             }
-            if(err_l < eps_r_h * err_l_0 && (err_g < eps_r_h * err_g_0 || err_g_0 < 1e-10)){
+            if(err_l < eps_r_h * err_l_0 || (err_g < eps_r_h * err_g_0 || err_g_0 < -1e-10)){
                 printf("Flow converged by rel.crit. in %d it.: r_l = %e, r_g = %e\n", nit, err_l, err_g);
                 fflush(stdout);
                 flog << "Converged in " << nit << endl;
@@ -442,6 +443,17 @@ void Problem::SolveOnGPU()
     cudaDeviceSynchronize();
     Count_Mass_GPU();
 
+//    srand(time(0));
+//    for(int i = 0; i < nx+1; i++)
+//        for(int j = 0; j < ny; j++)
+//            Kx[i+j*(nx+1)] = 0.01*K0 * (0.2 + rand()/(double)RAND_MAX);
+//    cudaMemcpy(dev_Kx,  Kx,  sizeof(DAT) * (nx+1)*ny, cudaMemcpyHostToDevice);
+//    for(int i = 0; i < nx; i++)
+//        for(int j = 0; j < ny+1; j++)
+//            Ky[i+j*nx] = K0 * (0.2 + rand()/(double)RAND_MAX);
+//    cudaMemcpy(dev_Ky,  Ky,  sizeof(DAT) * nx*(ny+1), cudaMemcpyHostToDevice);
+
+
 //    for(int i = 0; i < nx+1; i++){
 //        for(int j = 0; j < nx; j++){
 //            Kx[i+j*(nx+1)] = (1.+10*rand()/RAND_MAX)*K0;
@@ -471,6 +483,7 @@ void Problem::SolveOnGPU()
     for(int it = 1; it <= nt; it++){
         printf("\n\n =======  TIME STEP %d, T = %lf s =======\n", it, it*dt);
         flog << "\n\n =======  TIME STEP " << it <<", T = " << it*dt << " s =======\n";
+        cout << "FLUX = " << FLUX << endl;
         if(do_mech)
 ;//            M_Substep_GPU();
         cudaMemcpy(dev_Pl_old,  dev_Pl,  sizeof(DAT) * nx*ny, cudaMemcpyDeviceToDevice);
@@ -556,15 +569,15 @@ __global__ void kernel_SetIC(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Sl,
 
         if(sqrt((Lx/2.0-x)*(Lx/2.0-x) + (Ly/2.0-y)*(Ly/2.0-y)) < 0.001){
             //Pl[ind] = 11e6;//8.1e6;//11e6;
-            Sl[ind] = 1;//8.9e-4;//1.0;
+            Sl[ind] = 1e0;//8.9e-4;//1.0;
         }
         else{
             //Pl[i+j*nx] = 8e6;
-            Sl[ind] = 8.9e-4;
+            Sl[ind] = 1e-1;//8.9e-4;
         }
 
         //Pl[ind] = 8e6;
-        Pg[ind] = 10e6;
+        Pg[ind] = 1;//0e6;
         DAT Pcc = rhol*9.81/vg_a * pow(pow(Sl[ind],-1./vg_m) - 1., 1./vg_n);
         if(isnan(Pcc) || isinf(Pcc)){
             printf("Bad Pcc at cell (%d %d), Sl = %e\n", i, j, Sl[ind]);
@@ -692,7 +705,8 @@ __global__ void kernel_Compute_Q(DAT *Pl, DAT *Pg,
         DAT x = (i+0.5)*dx;
         //if(x > 0.012*0.25 && x < 0.012*0.75)
         qly[i+j*nx] = FLUX;
-        //qly[i+j*nx] = -rhol*1/mul*Krly[i+j*nx]*((Pl[i+j*nx]-0)/dy + 0*rhol*g);
+        //qly[i+j*nx] = -rhol*1e-18/mul/*Krly[i+j*nx]*/*((Pl[i+j*nx]-10e6)/dy + 0*rhol*g);
+        //printf("q = %e\n", qly[i+j*nx]);
     }
 
 
@@ -797,6 +811,8 @@ __global__ void kernel_Update_P_impl(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Pl_old, DAT
         DAT div_qg = (qgx[i+1+j*(nx+1)] - qgx[i+j*(nx+1)])/dx
                    + (qgy[i+(j+1)*nx]   - qgy[i+j*nx])/dy;
 
+        //phi[ind] = div_ql;
+
 
         rsd_l[ind] =  PHI*rhol * (Sl[ind] - Sl_old[ind])/dt + div_ql;
         rsd_g[ind] = -PHI*rhog * (Sl[ind] - Sl_old[ind])/dt + div_qg;
@@ -809,7 +825,7 @@ __global__ void kernel_Update_P_impl(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Pl_old, DAT
         DAT dtau; // Pseudo-transient step
         D    = max(rhol,rhog)*1e-18/min(mul,mug) / PHI/rhol;// * max(Krl,Krg);
         dtau = min(dx*dx,dy*dy) / D / 4.1;
-        dtau *= 1e-6;
+        dtau *= 1e-5;
 
 
 //        DAT dS = (Sl[ind] - Sl_old[ind])/dt;
@@ -834,7 +850,7 @@ __global__ void kernel_Update_P_impl(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Pl_old, DAT
 
         for(; dtau > 1e-18; dtau *= 0.1){
             // Try update
-            Sl[ind] = Sl[ind]/dtau + Sl_old[ind]/dt - div_ql/phi[ind]/rhol;
+            Sl[ind] = Sl[ind]/dtau + Sl_old[ind]/dt - div_ql/PHI/rhol;
             Sl[ind] = Sl[ind]/(1./dt + 1./dtau);
             if(Sl[ind] > 1.0 || Sl[ind] < 0.0 || isinf(Sl[ind]) || isnan(Sl[ind])){
                 //printf("Bad Sl = %e at cell (%d %d), Slp = %e, Sl_old = %e, divq = %e, dtau = %e\n", Sl[ind], i, j, Slp, Sl_old[ind], div_ql/PHI/rhol, dtau);
@@ -845,7 +861,7 @@ __global__ void kernel_Update_P_impl(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Pl_old, DAT
 
         }
 
-        Pg[ind] = Pg[ind] + dtau * ((Sl[ind] - Sl_old[ind])/dt - div_qg/phi[ind]/rhog);
+        Pg[ind] = Pg[ind] + dtau * ((Sl[ind] - Sl_old[ind])/dt - div_qg/PHI/rhog);
 
         DAT Pcc = rhol*9.81/vg_a * pow(pow(Sl[ind],-1./vg_m) - 1., 1./vg_n);
         if(isnan(Pcc) || isinf(Pcc)){
@@ -899,7 +915,7 @@ __global__ void kernel_Update_P_Poro_impl(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Pl_old
         // Determine pseudo-transient step
         DAT D;    // "Diffusion coefficient" for the cell
         DAT dtau; // Pseudo-transient step
-        D    = max(rhol,rhog[ind])*1e-18/min(mul,mug) / PHI/rhol;// * max(Krl,Krg);
+        D    = max(rhol,rhog[ind])*1e-18/min(mul,mug) / phi[ind]/rhol * max(Krl,Krg);
         dtau = min(dx*dx,dy*dy) / D / 4.1;
         dtau *= 1e-6;
 
@@ -943,7 +959,7 @@ __global__ void kernel_Update_P_Poro_impl(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Pl_old
 
         Pg[ind] = Pg[ind] + dtau * ((rhog[ind]*mnp1k - rhog_old[ind]*mn)/dt - div_qg);
 
-        rhog[ind] = rhog0;// * (1. + Pg[ind]/1e5);
+        rhog[ind] = rhog0;
 
         DAT Pcc = rhol*9.81/vg_a * pow(pow(Sl[ind],-1./vg_m) - 1., 1./vg_n);
         if(isnan(Pcc) || isinf(Pcc)){

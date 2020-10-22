@@ -121,13 +121,13 @@ void Problem::SaveVTK(string path)
         }
     }
 
-//    out << "VECTORS Liquid_Flux double" << endl;
-//    for(int j = 0; j < ny; j++){
-//        for(int i = 0; i < nx; i++){
-//            out << 0.5*(qlx[i+j*(nx+1)]+qlx[i+1+j*(nx+1)]) << " " <<
-//                   0.5*(qly[i+(j+1)*nx]+qly[i+j*nx]) << " 0.0" << endl;
-//        }
-//    }
+    out << "VECTORS Liquid_Flux double" << endl;
+    for(int j = 0; j < ny; j++){
+        for(int i = 0; i < nx; i++){
+            out << 0.5*(qlx[i+j*(nx+1)]+qlx[i+1+j*(nx+1)]) << " " <<
+                   0.5*(qly[i+(j+1)*nx]+qly[i+j*nx]) << " 0.0" << endl;
+        }
+    }
 
     out << "SCALARS Rl double" << endl;
     out << "LOOKUP_TABLE default" << endl;
