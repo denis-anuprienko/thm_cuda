@@ -76,7 +76,7 @@ __global__ void kernel_Update_P_Poro_impl(DAT dtau, int *res, DAT *Pl, DAT *Pg, 
                                      DAT *qlx, DAT *qly, DAT *qgx, DAT *qgy,
                                      DAT *Krlx, DAT *Krly, DAT *Krgx, DAT *Krgy,
                                      DAT *phi, DAT *phi_old,
-                                     DAT *rsd_l, DAT *rsd_g,
+                                     DAT *rsd_l, DAT *rsd_g, double *dummy1,
                                      const DAT mul, const DAT mug,
                                      const DAT rhol, const DAT rhog0, DAT *rhog, DAT *rhog_old,
                                      const DAT vg_a, const DAT vg_n, const DAT vg_m,
@@ -253,7 +253,7 @@ void Problem::Update_P_Poro_impl_GPU()
     dim3 dimBlock(BLOCK_DIM, BLOCK_DIM);
     dim3 dimGrid((nx+dimBlock.x-1)/dimBlock.x, (ny+dimBlock.y-1)/dimBlock.y);
 
-    DAT dtau = Get_Dtau();
+    DAT dtau = Get_Dtau(2);
     if(dtau < 1e-10){
         printf("Bad dtau = %e\n", dtau);
         exit(0);
@@ -264,7 +264,7 @@ void Problem::Update_P_Poro_impl_GPU()
                                                     dev_qlx, dev_qly, dev_qgx, dev_qgy,
                                                     dev_Krlx, dev_Krly, dev_Krgx, dev_Krgy,
                                                     dev_phi, dev_phi_old,
-                                                    dev_rsd_l, dev_rsd_g,
+                                                    dev_rsd_l, dev_rsd_g, dev_dummy1,
                                                     mul, mug,
                                                     rhol, rhog0, dev_rhog, dev_rhog_old,
                                                     vg_a, vg_n, vg_m,
@@ -384,7 +384,7 @@ void Problem::Count_Mass_GPU()
     mass_l = mass_new;
 }
 
-DAT Problem::Get_Dtau()
+DAT Problem::Get_Dtau(int order)
 {
     dim3 dimBlock(BLOCK_DIM, BLOCK_DIM);
     dim3 dimGrid((nx+dimBlock.x-1)/dimBlock.x, (ny+dimBlock.y-1)/dimBlock.y);
@@ -400,7 +400,14 @@ DAT Problem::Get_Dtau()
 
     DAT D    = max(rhol,rhog0)*K0/min(mul,mug)*dPcdS_max;
     //printf("D = %e, dPdS = %e\n", D, dPcdS_max);
-    return min(dx*dx,dy*dy) / D / 4.1; // Greater D - smaller  dtau
+    if(order == 1)
+        return min(dx*dx,dy*dy) / D / 4.1; // Greater D - smaller  dtau
+    else if(order == 2)
+        return 20*sqrt(1./(8.1*D/min(dx*dx,dy*dy)));
+    else{
+        printf("Wrong order for dtau computation: %d\n", order);
+        exit(1);
+    }
 }
 
 void Problem::H_Substep_GPU()
@@ -492,6 +499,7 @@ void Problem::SolveOnGPU()
     cudaMalloc((void**)&dev_rsd_l,    sizeof(DAT) * nx*ny);
     cudaMalloc((void**)&dev_rsd_g,    sizeof(DAT) * nx*ny);
     cudaMalloc((void**)&dev_dpcds,    sizeof(DAT)*nx*ny);
+    cudaMalloc((void**)&dev_dummy1,   sizeof(DAT)*nx*ny);
     cudaEventRecord(tbeg);
 
     printf("Allocated on GPU\n");
@@ -591,6 +599,7 @@ void Problem::SolveOnGPU()
     cudaFree(dev_rsd_l);
     cudaFree(dev_rsd_g);
     cudaFree(dev_dpcds);
+    cudaFree(dev_dummy1);
 
     cudaEventRecord(tend);
     cudaEventSynchronize(tend);
@@ -640,12 +649,12 @@ __global__ void kernel_SetIC(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Sl,
 
         if(sqrt((Lx/2.0-x)*(Lx/2.0-x) + (Ly/2.0-y)*(Ly/2.0-y)) < 0.001){
             //Pl[ind] = 11e6;//8.1e6;//11e6;
-            Sl[ind] = 1e-1;//8.9e-4;//1.0;
+            Sl[ind] = 0.1;//8.9e-4;//1.0;
             //Pg[ind] = 11e6;
         }
         else{
             //Pl[i+j*nx] = 8e6;
-            Sl[ind] = 1e-1;//8.9e-4;
+            Sl[ind] = 0.1;//8.9e-4;
             //Pg[ind] = 10e6;
         }
 
@@ -659,6 +668,7 @@ __global__ void kernel_SetIC(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Sl,
             __trap();
         }
         Pl[ind] = Pg[ind] - Pcc;
+        Pc[ind] = Sl[ind]*0.16;
         phi[ind] = 0.16;
         rhog[ind] = rhog0;// * (1. + Pg[ind]/1e5);
         rsd_l[ind] = 0.0;
@@ -1002,6 +1012,7 @@ __global__ void kernel_Update_P_Poro_impl(DAT dtau, int *res, DAT *Pl, DAT *Pg, 
                                      DAT *Krlx, DAT *Krly, DAT *Krgx, DAT *Krgy,
                                      DAT *phi, DAT *phi_old,
                                      DAT *rsd_l, DAT *rsd_g,
+                                     DAT *dummy1,
                                      const DAT mul, const DAT mug,
                                      const DAT rhol, const DAT rhog0, DAT *rhog, DAT *rhog_old,
                                      const DAT vg_a, const DAT vg_n, const DAT vg_m,
@@ -1028,29 +1039,29 @@ __global__ void kernel_Update_P_Poro_impl(DAT dtau, int *res, DAT *Pl, DAT *Pg, 
         rsd_g[ind] = (rhog[ind]*phi[ind]*(1.-Sl[ind]) - rhog_old[ind]*phi_old[ind]*(1.-Sl_old[ind]))/dt + div_qg;
 
 
-        if(Sl[ind] < 1e0-1e-5){ // REAL 2PHASE CASE
-            DAT S = Sl[ind];
-            DAT dPcdS = -pow((pow(S,-1./vg_m)-1.),1./vg_n)/(vg_m*vg_n * (pow(S,1./vg_m)-1.));
-            dPcdS *= rhol*9.81/vg_a;
-            if(dPcdS < 1e-10)
-                printf("BADDDD\n");
-            rhog[ind] = dPcdS;
-
-//            DAT D    = max(rhol,rhog[ind])*1e-18/min(mul,mug)*dPcdS * PHI;// * max(Krl,Krg);
-//            DAT dtau = min(dx*dx,dy*dy) / D / 4.1; // Greater D - smaller  dtau
-//            dtau *= 1e0;
-
-            DAT Slp = Sl[ind];
+        if(Sl[ind] < 1e0-1e-8){ // REAL 2PHASE CASE
 
             DAT mn = (Sl_old[ind]*phi_old[ind]); //m^n = volumetric content (S*phi) at the previous time step
-            DAT mnp1k; // v.cont. at previous iteration
-
-
-            mnp1k = Sl[ind]*phi[ind];
+            DAT mnp1k; // v.cont. at previous iteration (n+1,k)
+            mnp1k = Sl[ind]*phi[ind]; // by definition
 
             // Try update for vol.cont.
-            mnp1k = mnp1k/dtau + mn/dt - div_ql/rhol;
-            mnp1k = mnp1k/(1./dt + 1./dtau);
+            bool use_1 = false;
+            if(use_1){
+                mnp1k = mnp1k/dtau + mn/dt - div_ql/rhol;
+                mnp1k = mnp1k/(1./dt + 1./dtau);
+            }
+            else{ // 2nd order
+                // 'Implicit' wave update
+                //dtau = 1./(8.1*D/min(dx*dx,dy*dx));
+                //dtau = sqrt(dtau);
+                DAT A = 0.1;
+                DAT C = 1.;//-1./nx;//1. - 3./nx;
+                DAT mnp1k_copy = mnp1k;
+                mnp1k = (mn/dt - div_ql/rhol + C*(2*mnp1k - Pc[ind])/(dtau*dtau) + A * mnp1k/dtau);
+                mnp1k /= (1./dt + 1./dtau*(C/dtau+A));
+                Pc[ind] = mnp1k_copy;
+            }
 
             // Now, update porosity using values at previous, k-th iteration
             DAT Pf     = Sl[ind]    *Pl[ind]     + (1.0-Sl[ind])    *Pg[ind];
@@ -1061,45 +1072,33 @@ __global__ void kernel_Update_P_Poro_impl(DAT dtau, int *res, DAT *Pl, DAT *Pg, 
 
             // Having porosity obtained, we can get saturation from vol.cont.
             Sl[ind] = mnp1k/phi[ind];
-
-
             if(Sl[ind] > 1.0 || Sl[ind] < 0.0 || isinf(Sl[ind]) || isnan(Sl[ind])){
-                printf("Bad Sl = %e at cell (%d %d), Slp = %e, Sl_old = %e, divq = %e, dtau = %e\n", Sl[ind], i, j, Slp, Sl_old[ind], div_ql/PHI/rhol, dtau);
-                //printf("Bad Sl = %e at cell %d %d\n", Sl[ind], i, j);
-                //Sl[ind] = Slp;
-                //*res *= -2;
+                printf("Bad Sl = %e at cell (%d %d), Sl_old = %e, divq = %e, dtau = %e\n", Sl[ind], i, j, Sl_old[ind], div_ql/rhol, dtau);
                 __trap();
             }
-
-            //Pg[ind] = Pg[ind] + 1e2*dtau * ((rhog[ind]*mnp1k - rhog_old[ind]*mn)/dt - div_qg);
-
-
-            // dM/dt + div_qg = A*(P^{n+1} - P^n)/dtau + C*(P^{n+1} - 2*P^n - P^{n-1})/dtau^2
-            // ==>
-            // P^{n+1} * (A/dtau + C/dtau^2) =
-            // = dM/dt + div_qg + A*P^n/dtau + C*(2*P^n - P^{n-1})/dtau^2
-
-            //dtau    = 1e-1*sqrt(min(dx*dx,dy*dy) / D / 4.1 / rhog[ind]);
-//            dtau *= 1e-7;
-//            DAT A   = 1.;
-//            DAT C   = 1./nx;
-//            DAT Pgg = Pg[ind];
-//            Pg[ind] = ((rhog[ind]*phi[ind]*(1.-Sl[ind]) - rhog_old[ind]*phi_old[ind]*(1.-Sl_old[ind]))/dt + div_qg) + A*rhog[ind]*Pg[ind]/dtau + C*rhog[ind]*(2*Pg[ind] - Pc[ind])/(dtau*dtau);
-//            Pg[ind] /= rhog[ind]*(A/dtau + C/(dtau*dtau));
-//            Pc[ind] = Pgg;
-
-            //rhog[ind] = rhog0;
 
             DAT Pcc = rhol*9.81/vg_a * pow(pow(Sl[ind],-1./vg_m) - 1., 1./vg_n);
             if(isnan(Pcc) || isinf(Pcc)){
                 printf("Bad Pcc at cell (%d %d), Sl = %e\n", i, j, Sl[ind]);
                 __trap();
             }
+
+            // ======================== GAS PRESSURE UPDATE ====================
+            DAT A        = 1;//./nx;
+            DAT C        = 1./nx;
+            DAT D        = rhog[ind]*1e-18/min(mul,mug);
+            dtau         = 50*sqrt(min(dx*dx,dy*dy) / D / 4.1);
+
+            DAT Pgg = Pg[ind];
+            Pg[ind] = (rhog[ind]*(mnp1k - mn)/dt - div_qg) + A*Pg[ind]/dtau + C*(2*Pg[ind] - dummy1[ind])/(dtau*dtau);
+            Pg[ind] /= (A/dtau + C/(dtau*dtau));
+            dummy1[ind] = Pgg;
+
             Pl[ind] = Pg[ind] - Pcc;
         }
         else{ // JUST LIQUID FLOW
 
-            if(i*j==0)printf("Liqflw\n");
+            //if(i*j==0)printf("Liqflw\n");
             rsd_g[ind] = 0;
 
             rsd_l[ind] =  rhol*c_phi * (Pl[ind] - Pl_old[ind])/dt + div_ql;
@@ -1112,7 +1111,7 @@ __global__ void kernel_Update_P_Poro_impl(DAT dtau, int *res, DAT *Pl, DAT *Pg, 
             D    = 700*1e-18/min(mul,mug);
 
             DAT Pll = Pl[ind];
-            //DAT dtau = 1./(8.1*D/min(dx*dx,dy*dx)/c_phi)*1e0;
+            DAT dtau = 1./(8.1*D/min(dx*dx,dy*dx)/c_phi)*1e0;
             dtau = sqrt(dtau);
             DAT A = 3./nx;
             DAT C = 1;//1. - 3./nx;
@@ -1231,7 +1230,7 @@ __global__ void kernel_Compute_dPcdSl(DAT *Sl, DAT *dpcds,
     if(i >= 0 && i < nx && j >= 0 && j < ny){
         int ind = i+nx*j;
         DAT S = Sl[ind];
-        if(S > 1.0-1e-5 || S < 0.0){
+        if(S > 1.0 || S < 0.0){
             printf("Bad S = %e at cell %d %d\n", S, i, j);
             __trap();
         }
