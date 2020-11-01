@@ -42,13 +42,13 @@ private:
 
 
     // Numerics
-    const int nx      = 64;          // number of cells
-    const int ny      = 64;
+    const int nx      = 1;          // number of cells
+    const int ny      = 128;
     const DAT dx      = Lx/nx;        // cell size
     const DAT dy      = Ly/ny;
     const DAT niter   = 10e4;        // number of PT steps
-    const DAT eps_a_h = 1e-10;         // absolute tolerance, flow
-    const DAT eps_r_h = 5e-6;
+    const DAT eps_a_h = 1e-5;         // absolute tolerance, flow
+    const DAT eps_r_h = 1e-5;
 
     const DAT dt        = 1e3;//220*60/10;    // Seconds
     const DAT Time      = dt*10;
@@ -98,6 +98,7 @@ private:
     DAT *dev_rhog_old;
     DAT *dev_rsd_l;
     DAT *dev_rsd_g;
+    DAT *dev_dpcds;
 
     std::string respath;
     std::ofstream flog;
@@ -115,6 +116,7 @@ private:
     void Update_P_Poro_impl_GPU(); // "Implicitly" update pressure, porosity and compute residuals
     void Update_Poro_GPU();        // Update porosity based on new fluid pressure values
     void Count_Mass_GPU();         // Count mass (of liquid) to check mass conservation
+    DAT  Get_Dtau();               // Get time step size for pseudo-transient
 
 public:
     Problem(){ Init(); }

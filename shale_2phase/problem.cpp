@@ -10,6 +10,7 @@ void Problem::Init()
     printf("c_f = %e, c_phi = %e\n", c_f, c_phi);
     fflush(stdout);
     flog.open(respath + "\\log.txt");
+    cout << "nx = " << nx << ", ny = " << ny << ", nt = " << nt << ", dt = " << dt << ", niter = " << niter << endl;
     flog << "nx = " << nx << ", ny = " << ny << ", nt = " << nt << ", dt = " << dt << ", niter = " << niter << endl;
     DAT D      = 1e-18/min(mul,mug);// * max(rhol,rhog) * max(Krl,Krg);
     DAT dtau_t = 1./(4.1*D/min(dx*dx,dy*dy) + 1./dt);
