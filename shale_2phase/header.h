@@ -43,10 +43,10 @@ private:
 
     // Numerics
     const int nx      = 1;          // number of cells
-    const int ny      = 128;
+    const int ny      = 64;
     const DAT dx      = Lx/nx;        // cell size
     const DAT dy      = Ly/ny;
-    const DAT niter   = 1e4;        // number of PT steps
+    const DAT niter   = 3e4;        // number of PT steps
     const DAT eps_a_h = 1e-6;         // absolute tolerance, flow
     const DAT eps_r_h = 1e-5;
 

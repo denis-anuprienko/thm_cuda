@@ -398,12 +398,12 @@ DAT Problem::Get_Dtau(int order)
     DAT dPcdS_max;
     FindMax(dev_dpcds, &dPcdS_max, nx*ny);
 
-    DAT D    = max(rhol,rhog0)*K0/min(mul,mug)*dPcdS_max;
+    DAT D    = max(rhol,rhog0)*K0/min(mul,mug)*dPcdS_max/rhol;
     //printf("D = %e, dPdS = %e\n", D, dPcdS_max);
     if(order == 1)
-        return min(dx*dx,dy*dy) / D / 4.1; // Greater D - smaller  dtau
+        return min(dx*dx,dy*dy) / D / 4.1;//1./(1./(min(dx*dx,dy*dy) / D / 4.1) + 1./dt); // Greater D - smaller  dtau
     else if(order == 2)
-        return 20*sqrt(1./(8.1*D/min(dx*dx,dy*dy)));
+        return sqrt(1./(8.1*D/min(dx*dx,dy*dy)));
     else{
         printf("Wrong order for dtau computation: %d\n", order);
         exit(1);
@@ -1055,8 +1055,8 @@ __global__ void kernel_Update_P_Poro_impl(DAT dtau, int *res, DAT *Pl, DAT *Pg, 
                 // 'Implicit' wave update
                 //dtau = 1./(8.1*D/min(dx*dx,dy*dx));
                 //dtau = sqrt(dtau);
-                DAT A = 0.1;
-                DAT C = 1.;//-1./nx;//1. - 3./nx;
+                DAT A = 1.;
+                DAT C = 1./ny;//-1./nx;//1. - 3./nx;
                 DAT mnp1k_copy = mnp1k;
                 mnp1k = (mn/dt - div_ql/rhol + C*(2*mnp1k - Pc[ind])/(dtau*dtau) + A * mnp1k/dtau);
                 mnp1k /= (1./dt + 1./dtau*(C/dtau+A));
@@ -1072,8 +1072,14 @@ __global__ void kernel_Update_P_Poro_impl(DAT dtau, int *res, DAT *Pl, DAT *Pg, 
 
             // Having porosity obtained, we can get saturation from vol.cont.
             Sl[ind] = mnp1k/phi[ind];
+
+//            if(Sl[ind] > 0.9)
+//                Sl[ind] = 0.9;
+//            if(Sl[ind] < 1e-5)
+//                Sl[ind] = 1e-5;
+
             if(Sl[ind] > 1.0 || Sl[ind] < 0.0 || isinf(Sl[ind]) || isnan(Sl[ind])){
-                printf("Bad Sl = %e at cell (%d %d), Sl_old = %e, divq = %e, dtau = %e\n", Sl[ind], i, j, Sl_old[ind], div_ql/rhol, dtau);
+                printf("Bad Sl = 1+%e at cell (%d %d), Sl_old = %e, divq = %e, dtau = %e\n", Sl[ind]-1, i, j, Sl_old[ind], div_ql/rhol, dtau);
                 __trap();
             }
 
@@ -1084,13 +1090,15 @@ __global__ void kernel_Update_P_Poro_impl(DAT dtau, int *res, DAT *Pl, DAT *Pg, 
             }
 
             // ======================== GAS PRESSURE UPDATE ====================
-            DAT A        = 1;//./nx;
-            DAT C        = 1./nx;
-            DAT D        = rhog[ind]*1e-18/min(mul,mug);
-            dtau         = 50*sqrt(min(dx*dx,dy*dy) / D / 4.1);
+            DAT A        = 1./ny;
+            DAT C        = 1.;///nx;
+            DAT D        = rhog[ind]*1e-18/min(mul,mug)/rhog0;
+            dtau         = 1*sqrt(min(dx*dx,dy*dy) / D / 4.1);
+
+            DAT Q = rhog[ind] * (phi[ind]*(1.-Sl[ind]) - phi_old[ind]*(1.-Sl_old[ind]))/dt;
 
             DAT Pgg = Pg[ind];
-            Pg[ind] = (rhog[ind]*(mnp1k - mn)/dt - div_qg) + A*Pg[ind]/dtau + C*(2*Pg[ind] - dummy1[ind])/(dtau*dtau);
+            Pg[ind] = (-Q - div_qg) + A*Pg[ind]/dtau + C*(2*Pg[ind] - dummy1[ind])/(dtau*dtau);
             Pg[ind] /= (A/dtau + C/(dtau*dtau));
             dummy1[ind] = Pgg;
 
@@ -1113,8 +1121,8 @@ __global__ void kernel_Update_P_Poro_impl(DAT dtau, int *res, DAT *Pl, DAT *Pg, 
             DAT Pll = Pl[ind];
             DAT dtau = 1./(8.1*D/min(dx*dx,dy*dx)/c_phi)*1e0;
             dtau = sqrt(dtau);
-            DAT A = 3./nx;
-            DAT C = 1;//1. - 3./nx;
+            DAT A = 1;//3./nx;
+            DAT C = 1./ny;//1. - 3./nx;
             Pl[ind] = (Pl_old[ind]/dt - div_ql/c_phi/rhol + C*(2*Pl[ind] - Pc[ind])/(dtau*dtau) + A * Pl[ind]/dtau);
             Pl[ind] /= (1./dt + 1./dtau*(C/dtau+A));
             Pc[ind] = Pll;
@@ -1234,9 +1242,11 @@ __global__ void kernel_Compute_dPcdSl(DAT *Sl, DAT *dpcds,
             printf("Bad S = %e at cell %d %d\n", S, i, j);
             __trap();
         }
-        dpcds[ind] = -pow((pow(S,-1./vg_m)-1.),1./vg_n)/(vg_m*vg_n * (pow(S,1./vg_m)-1.));
-        dpcds[ind] *= rhol*9.81/vg_a;
-        dpcds[ind] = fabs(dpcds[ind]);
+//        dpcds[ind] = -pow((pow(S,-1./vg_m)-1.),1./vg_n)/(vg_m*vg_n * (pow(S,1./vg_m)-1.));
+//        dpcds[ind] *= rhog*9.81/vg_a;
+        dpcds[ind] = 1.0 / (vg_m*vg_n*vg_a) * pow(pow(S, -1.0/vg_m) - 1.0, 1.0/vg_n - 1.0);
+        dpcds[ind] *= pow(S, -1.0 - 1.0/vg_m);
+        dpcds[ind] = rhol*9.81*fabs(dpcds[ind]);
         if(dpcds[ind] < 0.0){
             printf("Dabd dpds = %e, S = %e\n", dpcds[ind], S);
         }
