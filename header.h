@@ -52,7 +52,7 @@ private:
     const DAT Time      = dt*100;
     const DAT nt        = Time / dt;
 
-    bool do_mech   = true;
+    bool do_mech   = false;
     bool do_flow   = true;
     bool save_mech = true;
     bool save_flow = true;
@@ -103,6 +103,7 @@ private:
     void Update_V_GPU();      // Update solid
     void Update_U_GPU();      // Update solid displacement (includes damping of V!)
     void Update_Stress_GPU(); // Update stress and compute residual
+    void Count_Mass_GPU();
 
 public:
     Problem(){ Init(); }

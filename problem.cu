@@ -61,6 +61,39 @@ void FindMax(DAT *dev_arr, DAT *max, int size)
     cublasDestroy(handle);
 }
 
+void Problem::Count_Mass_GPU()
+{
+    DAT mass_new = 0.0, mass_old = 0.0; // total water mass
+
+    cudaError_t err = cudaGetLastError();
+    if(err != 0)
+        printf("Error %x at Mul\n", err);
+    cublasHandle_t handle;
+    cublasStatus_t stat;
+    cublasCreate(&handle);
+
+    stat = cublasDasum(handle, nx*ny, dev_Sw, 1, &mass_new);
+    if (stat != CUBLAS_STATUS_SUCCESS)
+        printf("Sum failed\n");
+    mass_new *= dx*dy * rhow;
+
+    stat = cublasDasum(handle, nx*ny, dev_Sw_old, 1, &mass_old);
+    if (stat != CUBLAS_STATUS_SUCCESS)
+        printf("Sum failed\n");
+    mass_old *= dx*dy * rhow;
+
+    cublasDestroy(handle);
+
+    DAT change       = mass_new - mass_old;
+    DAT change_prcnt = (mass_new-mass_old)/mass_old*100;
+    DAT change_expct = 0.0;//FLUX*dt*Lx;
+    printf("Mass change is %e kg (%2.2lf%%), expected %e kg, diff = %e kg\n", change,
+                                                                change_prcnt,
+                                                                change_expct,
+                                                                change - change_expct);
+    printf("Ratios: %e %e dx = %e dy = %e\n", change/change_expct, change_expct/change, dx, dy);
+}
+
 void Problem::SetIC_GPU()
 {
     dim3 dimBlock(BLOCK_DIM, BLOCK_DIM);
@@ -248,6 +281,7 @@ void Problem::H_Substep_GPU()
             }
         }
     }
+    Count_Mass_GPU();
 }
 
 void Problem::SolveOnGPU()
@@ -305,7 +339,8 @@ void Problem::SolveOnGPU()
     cudaDeviceSynchronize();
 
     // Initial mechanical state
-    M_Substep_GPU();
+    if(do_mech)
+        M_Substep_GPU();
 
     SaveVTK_GPU(respath + "/sol0.vtk");
 
