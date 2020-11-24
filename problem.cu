@@ -6,7 +6,7 @@
 using namespace std;
 
 #define BLOCK_DIM 16
-#define dt_h      1e-2
+#define dt_h      1e-4
 #define dt_m      1e-6
 
 void FindMax(DAT *dev_arr, DAT *max, int size);
@@ -14,7 +14,7 @@ void FindMax(DAT *dev_arr, DAT *max, int size);
 __global__ void kernel_SetIC(DAT *Txx, DAT *Tyy, DAT *Txy, DAT *Vx, DAT *Vy, DAT *Ux, DAT *Uy,
                              DAT *rsd_m_x, DAT *rsd_m_y,
                              DAT *Pw, DAT *Sw, DAT *qx, DAT *qy, DAT *Krx, DAT *Kry,
-                             DAT *rsd_h,
+                             DAT *rsd_h, const DAT rhow, const DAT vg_a, const DAT vg_m, const DAT vg_n,
                              const int nx, const int ny, const DAT Lx, const DAT Ly);
 __global__ void kernel_Compute_Sw(DAT *Pw, DAT *Sw, const int nx, const int ny,
                              const DAT rhow, const DAT g,
@@ -105,16 +105,11 @@ void Problem::SetIC_GPU()
                                        dev_Vx, dev_Vy, dev_Ux, dev_Uy,
                                        dev_rsd_m_x, dev_rsd_m_y,
                                        dev_Pw, dev_Sw, dev_qx, dev_qy, dev_Krx, dev_Kry, dev_rsd_h,
+                                       rhow, vg_a, vg_m, vg_n,
                                        nx, ny, Lx, Ly);
     cudaError_t err = cudaGetLastError();
     if(err != 0)
         printf("Error %x at SetIC\n", err);
-    //kernel_Compute_Sw<<<dimGrid,dimBlock>>>(Pw, Sw, rhow, g, vg_a, vg_m, vg_n);
-    //kernel_ComputeKr<<<dimGrid,dimBlock>>>(H, Theta, Krx, Kry, nx, ny, dy);
-    //kernel_ComputeFluidFluxes<<<dimGrid,dimBlock>>>(H, qx, qy, Krx, Kry, nx, ny, dx, dy, D);
-    Compute_Sw_GPU();
-    //Compute_Kr_GPU();
-    //Compute_Q_GPU();
 }
 
 void Problem::Update_V_GPU()
@@ -400,6 +395,8 @@ void Problem::SolveOnGPU()
     delete [] Txy;
     delete [] Ux;
     delete [] Uy;
+    delete [] rsd_m_x;
+    delete [] rsd_m_y;
 }
 
 
@@ -407,6 +404,7 @@ __global__ void kernel_SetIC(DAT *Txx, DAT *Tyy, DAT *Txy,
                              DAT *Vx, DAT *Vy, DAT *Ux, DAT *Uy,
                              DAT *rsd_m_x, DAT *rsd_m_y,
                              DAT *Pw, DAT *Sw, DAT *qx, DAT *qy, DAT *Krx, DAT *Kry, DAT *rsd_h,
+                             const DAT rhow, const DAT vg_a, const DAT vg_m, const DAT vg_n,
                              const int nx, const int ny, const DAT Lx, const DAT Ly)
 {
     int i = blockDim.x * blockIdx.x + threadIdx.x;
@@ -418,18 +416,19 @@ __global__ void kernel_SetIC(DAT *Txx, DAT *Tyy, DAT *Txy,
     DAT x = (i+0.5)*dx, y = (j+0.5)*dy;
     // Cell variables
     if(i >= 0 && i < nx && j >= 0 && j < ny){
-        //if(i*i + j*j < 400)
-//        if(sqrt((Lx/2.0-x)*(Lx/2.0-x) + (Ly/2.0-y)*(Ly/2.0-y)) < 0.001)
-//            Pw[i+j*nx] = 1e3;
-//        else
-//            Pw[i+j*nx] = -1e5;
-        //DAT rad = (DAT)(i*i + j*j);
-        //Pw[i+j*nx] = sqrt(rad);
-        Pw[i+j*nx] = -1e5;
-        rsd_h[i+j*nx] = 0.0;
-        Txx[i+j*nx] = 0.0;
-        Tyy[i+j*nx] = 0.0;
+        int ind = i+j*nx;
 
+        if(sqrt((Lx/2.0-x)*(Lx/2.0-x) + (Ly/2.0-y)*(Ly/2.0-y)) < 0.002)
+            Sw[ind] = 1.0; //Pw[i+j*nx] = 1e3;
+        else
+            Sw[ind] = 0.2;//-1e5;
+
+        DAT Pcc = rhow*9.81/vg_a * pow(pow(Sw[ind],-1./vg_m) - 1., 1./vg_n);
+        Pw[ind] = -Pcc;
+        rsd_h[ind] = 0.0;
+
+        Txx[ind] = 0.0;
+        Tyy[ind] = 0.0;
         rsd_m_x[i+j*nx] = 0.0;
         rsd_m_y[i+j*nx] = 0.0;
     }
@@ -440,8 +439,6 @@ __global__ void kernel_SetIC(DAT *Txx, DAT *Tyy, DAT *Txy,
         Krx[ind] = 1.0;
         Ux[ind] = 0.0;
         Vx[ind] = 0.0;
-//        if(i > 0 && i < nx)
-//            Vx[ind] = 1e-3;
     }
     // Horizontal face variables - y-fluxes, for example
     if(i >=0 && i < nx && j >=0 && j <= ny){
@@ -450,8 +447,6 @@ __global__ void kernel_SetIC(DAT *Txx, DAT *Tyy, DAT *Txy,
         Kry[ind] = 1.0;
         Vy[ind] = 0.0;
         Uy[ind] = 0.0;
-        if(j > 0 && j < ny)
-            Vy[ind] = 1e-3;
     }
 
     if(i >= 0 && i <= nx && j >= 0 && j <= ny){
@@ -615,7 +610,7 @@ __global__ void kernel_Compute_Q(DAT *qx, DAT *qy, DAT *Pw, DAT *Krx, DAT *Kry,
         DAT x  =  (0.5+i)*dx,  y =  (0.5+j)*dy;
         if(x > Lx/2.-Lx/8. && x < Lx/2.+Lx/8.)
         //if(i >= 14 && i <= nx-15)
-            qy[i+0*nx] = -rhow*K/muw*((Pw[i+0*nx] - 1e3)/dy + rhow*g);
+            qy[i+0*nx] = -0*rhow*K/muw*((Pw[i+0*nx] - 1e3)/dy + rhow*g);
         else
             qy[i+0*nx] = 0.0;
     }
