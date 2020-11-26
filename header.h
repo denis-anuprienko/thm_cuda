@@ -39,20 +39,22 @@ private:
 
 
     // Numerics
-    const int nx      = 32;       // number of cells
+    const int nx      = 8;       // number of cells
     const int ny      = nx;
     const DAT dx      = Lx/nx;    // cell size
     const DAT dy      = Ly/ny;
-    const DAT niter   = 1e5;      // number of PT steps
-    const DAT eps_a_m = 1e-7;     // absolute tolerance, mechanics
+    const int niter   = 100000;      // number of PT steps
+    const DAT eps_a_m = 1e-6;     // absolute tolerance, mechanics
+    const DAT eps_r_m = 1e-5;     // relative tolerance, mechanics
     const DAT eps_a_h = 1e-6;     // absolute tolerance, flow
+    const DAT eps_r_h = 1e-5;     // relative tolerance, flow
     const DAT damp    = 1e1;
 
-    const DAT dt        = 1e-1;    // Seconds
-    const DAT Time      = dt*100;
+    const DAT dt        = 1e2;    // Seconds
+    const DAT Time      = dt*10;
     const DAT nt        = Time / dt;
 
-    bool do_mech   = false;
+    bool do_mech   = true;
     bool do_flow   = true;
     bool save_mech = true;
     bool save_flow = true;
@@ -94,6 +96,7 @@ private:
     // Functions calculating unknowns over whole mesh
     void H_Substep_GPU();     // Hydro substep
     void M_Substep_GPU();     // Mechanical substep
+    void HM_Substep_GPU();    // Fully coupled HM substep
     void SetIC_GPU();         // Set initial conditions
     void Compute_Sw_GPU();    // Compute water saturation
     void Compute_Kr_GPU();    // Compute relative permeability

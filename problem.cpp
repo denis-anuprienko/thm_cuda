@@ -78,7 +78,8 @@ void Problem::SaveVTK(string path)
                 ux = Ux[i+j*(nx+1)];
             if(j == ny)
                 ux = Ux[i+(j-1)*(nx+1)];
-            out << i*dx + ux << " " << j*dy + uy << " 0.0" << endl;
+            DAT fac = 1e0;
+            out << i*dx + fac*ux << " " << j*dy + fac*uy << " 0.0" << endl;
         }
     }
 
@@ -193,6 +194,14 @@ void Problem::SaveVTK(string path)
     for(int j = 0; j < ny; j++){
         for(int i = 0; i < nx; i++){
             out << rsd_m_y[i+j*nx] << endl;
+        }
+    }
+
+    out << "SCALARS RH double" << endl;
+    out << "LOOKUP_TABLE default" << endl;
+    for(int j = 0; j < ny; j++){
+        for(int i = 0; i < nx; i++){
+            out << rsd_h[i+j*nx] << endl;
         }
     }
 
