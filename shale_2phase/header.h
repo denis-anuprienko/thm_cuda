@@ -36,22 +36,22 @@ private:
     const DAT P0      = 1e5;          // Atmospheric pressure, Pa
     const DAT gamma   = 0.028*1e-6;   // Exponent factor for permeability function
 
-    const DAT vg_a    = 0.37;         // van Genuchten pore parameter
-    const DAT vg_n    = 2.5;          // van Genuchten pore parameter
+    const DAT vg_a    = 1.0;//0.37;         // van Genuchten pore parameter
+    const DAT vg_n    = 5;          // van Genuchten pore parameter
     const DAT vg_m    = 1. - 1./vg_n;
 
 
     // Numerics
-    const int nx      = 1;          // number of cells
-    const int ny      = 64;
+    const int nx      = 64;          // number of cells
+    const int ny      = nx;
     const DAT dx      = Lx/nx;        // cell size
     const DAT dy      = Ly/ny;
-    const DAT niter   = 3e4;        // number of PT steps
+    const DAT niter   = 10e4;        // number of PT steps
     const DAT eps_a_h = 1e-6;         // absolute tolerance, flow
     const DAT eps_r_h = 1e-5;
 
-    const DAT dt        = 1e3;//220*60/10;    // Seconds
-    const DAT Time      = dt*10;
+    const DAT dt        = 1e5;//220*60/10;    // Seconds
+    const DAT Time      = dt*1;
     const DAT nt        = Time / dt;
 
     bool do_mech   = false;

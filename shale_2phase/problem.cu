@@ -10,7 +10,7 @@ using namespace std;
 
 // Flux is 9.4e g/h = 9.4e-3 kg/h = 9.4e-6/60/60 kg/s
 
-#define FLUX 3.415127e-5//9.4e-3/60/60/0.012//0.012  //9.4e-3/60/60/700 * 10 // kg/m^2/s
+#define FLUX 0//3.415127e-5//9.4e-3/60/60/0.012//0.012  //9.4e-3/60/60/700 * 10 // kg/m^2/s
 
 void FindMax(DAT *dev_arr, DAT *max, int size);
 
@@ -428,8 +428,8 @@ void Problem::H_Substep_GPU()
         Compute_Kr_GPU();
         Compute_Q_GPU();
         //Update_P_GPU();
-        //Update_P_impl_GPU();
-        Update_P_Poro_impl_GPU();
+        Update_P_impl_GPU();
+        //Update_P_Poro_impl_GPU();
         if(nit%1000 == 0 || nit == 1 || nit == 2){
             err_l_old = err_l;
             err_g_old = err_g;
@@ -647,21 +647,21 @@ __global__ void kernel_SetIC(DAT *Pl, DAT *Pg, DAT *Pc, DAT *Sl,
     if(i >= 0 && i < nx && j >= 0 && j < ny){
         int ind = i+j*nx;
 
-        if(sqrt((Lx/2.0-x)*(Lx/2.0-x) + (Ly/2.0-y)*(Ly/2.0-y)) < 0.001){
+        if(sqrt((Lx/2.0-x)*(Lx/2.0-x) + (Ly/2.0-y)*(Ly/2.0-y)) < Lx/6){
             //Pl[ind] = 11e6;//8.1e6;//11e6;
-            Sl[ind] = 0.1;//8.9e-4;//1.0;
+            Sl[ind] = 0.9;//8.9e-4;//1.0;
             //Pg[ind] = 11e6;
         }
         else{
             //Pl[i+j*nx] = 8e6;
-            Sl[ind] = 0.1;//8.9e-4;
+            Sl[ind] = 0.01;//8.9e-4;
             //Pg[ind] = 10e6;
         }
 
         //Sl[ind] = 1;
 
         //Pl[ind] = 8e6;
-        Pg[ind] = 10e6;
+        Pg[ind] = 1e6;
         DAT Pcc = rhol*9.81/vg_a * pow(pow(Sl[ind],-1./vg_m) - 1., 1./vg_n);
         if(isnan(Pcc) || isinf(Pcc)){
             printf("Bad Pcc at cell (%d %d), Sl = %e\n", i, j, Sl[ind]);
